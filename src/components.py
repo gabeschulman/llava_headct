@@ -1,10 +1,7 @@
 import torch
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
-try:
-    from headCT_foundation.models.vit import ViT
-except ModuleNotFoundError:
-    from models.vit import ViT
+from src.models.vit import ViT
 
 class Encoder(ViT):
     def __init__(self, weights_path: str, **kwargs):
