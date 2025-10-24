@@ -1,4 +1,4 @@
-from .components import Encoder, Projector, Decoder
+from src.components import Encoder, Projector, Decoder
 import torch
 
 class LLaVAHeadCT(torch.nn.Module):
