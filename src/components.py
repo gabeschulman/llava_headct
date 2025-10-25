@@ -8,22 +8,27 @@ class Encoder(ViT):
         super().__init__(**kwargs)
         self.weights_path = weights_path
         self._load_weights()
+        self._freeze_weights()
         self.eval()
 
     def _load_weights(self):
         loaded_state_dict = torch.load(self.weights_path, map_location=torch.device('cpu'), weights_only=True)
         loaded_state_dict = {k.replace("module.", "").replace("backbone.", ""): v for k, v in loaded_state_dict.items()}
         self.load_state_dict(loaded_state_dict, strict=False)
+    
+    def _freeze_weights(self):
+        for param in self.parameters():
+            param.requires_grad = False
 
 class Projector(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, inner_channels, out_channels):
         super().__init__()
         self.pre_norm = nn.LayerNorm(in_channels)
 
         self.proj = nn.Sequential(
-            nn.Linear(in_channels, in_channels),
+            nn.Linear(in_channels, inner_channels),
             nn.GELU(),
-            nn.Linear(in_channels, out_channels)
+            nn.Linear(inner_channels, out_channels)
         )
     def forward(self, x):
         x = self.pre_norm(x)
@@ -36,5 +41,5 @@ class Decoder(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
-    def forward(self, input_ids, attention_mask=None):
-        return self.model(input_ids=input_ids, attention_mask=attention_mask)
+    def forward(self, input_embeds, attention_mask=None):
+        return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)

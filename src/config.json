@@ -1,0 +1,27 @@
+{
+    "decoder": {
+        "model_name": "Qwen/Qwen3-8B"
+    },
+    "projector": {
+        "in_channels": 512,
+        "inner_channels": 2048,
+        "out_channels": 4096
+    },
+    "vision_encoder": {
+        "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth"
+    },
+    "dataset": {
+        "datapath": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/",
+        "image_files": {
+            "test": "nyu_test_label.csv",
+            "train": "nyu_train_label.csv",
+            "val": "nyu_val_label.csv"
+        },
+        "radiology_report": "/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv",
+        "processed_files": {
+            "test": "nyu_test_processed.parquet",
+            "train": "nyu_train_processed.parquet",
+            "val": "nyu_val_processed.parquet"
+        }
+    }
+}
