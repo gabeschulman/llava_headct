@@ -8,14 +8,14 @@ from src.fm_ct.data.transforms import MultipleWindowScaleStack
 class ConditionClassificationDataset(Dataset):
     """
     Dataset class for Head CT condition classification using pre-trained ViT models.
-    
+
     This dataset handles:
     - Loading NIfTI files
     - Applying multiple window scaling (bone, soft tissue, brain windows)
     - Preprocessing for ViT model input
     - Batch processing for feature extraction
     """
-    
+
     def __init__(
         self,
         image_file_location: str,
@@ -28,7 +28,7 @@ class ConditionClassificationDataset(Dataset):
     ):
         """
         Initialize the dataset.
-        
+
         Args:
             image_paths: List of paths to NIfTI files
             roi: Region of interest size (D, H, W)
@@ -46,13 +46,16 @@ class ConditionClassificationDataset(Dataset):
         self.window_sizes: List[Tuple[int, int]] = window_sizes
 
         # Create the data list in MONAI format
-        self.data: List[dict] = [{"image_item": {'image': path}, "condition": cond} for path, cond in zip(self.image_paths, self.conditions)]
-        
+        self.data: List[dict] = [
+            {"image_item": {"image": path}, "condition": cond}
+            for path, cond in zip(self.image_paths, self.conditions)
+        ]
+
         # Initialize transforms
         self.transforms = self._build_transforms(
             roi, window_sizes, pixdim, axcodes, mode, allow_missing_keys
         )
-    
+
     def _build_transforms(
         self,
         roi: Tuple[int, int, int],
@@ -63,12 +66,12 @@ class ConditionClassificationDataset(Dataset):
         allow_missing_keys: bool,
     ) -> transforms.Compose:
         """Build the preprocessing transform pipeline."""
-        
+
         windowing_tran = MultipleWindowScaleStack(
             keys=["image"],
             window_sizes=window_sizes,
         )
-        
+
         transform_list = [
             transforms.LoadImaged(
                 keys=["image"],
@@ -88,7 +91,7 @@ class ConditionClassificationDataset(Dataset):
                 keys=["image"],
                 pixdim=pixdim,
                 mode=mode,
-                allow_missing_keys=allow_missing_keys
+                allow_missing_keys=allow_missing_keys,
             ),
             transforms.CropForegroundd(
                 keys=["image"],
@@ -107,20 +110,20 @@ class ConditionClassificationDataset(Dataset):
                 allow_missing_keys=allow_missing_keys,
             ),
         ]
-        
+
         return transforms.Compose(transform_list)
-    
+
     def __len__(self) -> int:
         return len(self.data)
-    
+
     def __getitem__(self, idx: int) -> dict:
         sample_data = self.data[idx].copy()
         sample_image = sample_data["image_item"]
         transformed_sample = self.transforms(sample_image)
-        
+
         return {
             "image": transformed_sample["image"],
-            "condition": sample_data["condition"]
+            "condition": sample_data["condition"],
         }
 
 
@@ -132,11 +135,11 @@ def create_condition_classification_dataloader(
     shuffle: bool = False,
     roi: Tuple[int, int, int] = (96, 96, 96),
     window_sizes: List[Tuple[int, int]] = [(40, 80), (80, 200), (600, 2800)],
-    **dataset_kwargs
+    **dataset_kwargs,
 ) -> DataLoader:
     """
     Create a DataLoader for Head CT feature extraction.
-    
+
     Args:
         image_paths: List of paths to NIfTI files
         batch_size: Batch size for the DataLoader
@@ -146,7 +149,7 @@ def create_condition_classification_dataloader(
         roi: Region of interest size
         window_sizes: List of windowing parameters
         **dataset_kwargs: Additional arguments for the dataset
-    
+
     Returns:
         DataLoader configured for feature extraction
     """
@@ -154,9 +157,9 @@ def create_condition_classification_dataloader(
         image_file_location=image_file_location,
         roi=roi,
         window_sizes=window_sizes,
-        **dataset_kwargs
+        **dataset_kwargs,
     )
-    
+
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
@@ -165,5 +168,5 @@ def create_condition_classification_dataloader(
         shuffle=shuffle,
         collate_fn=None,  # Use default collate function
     )
-    
+
     return dataloader

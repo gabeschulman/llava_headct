@@ -4,19 +4,20 @@ import os
 import polars as pl
 
 CONDITION_COLS = [
-    "cancer", 
-    "hydrocephalus", 
-    "edema", 
-    "dementia", 
-    "IPH", 
-    "IVH", 
-    "SDH", 
-    "EDH", 
-    "SAH", 
-    "ICH", 
-    "fracture", 
+    "cancer",
+    "hydrocephalus",
+    "edema",
+    "dementia",
+    "IPH",
+    "IVH",
+    "SDH",
+    "EDH",
+    "SAH",
+    "ICH",
+    "fracture",
     "hematoma",
 ]
+
 
 def main():
     config = json.load(open("../config.json"))
@@ -33,10 +34,13 @@ def main():
         )
         merged_df = image_df.join(reports_df, on="accession_num")
         merged_df = merged_df.with_columns(
-            pl.struct(CONDITION_COLS).alias("conditions").map_elements(
+            pl.struct(CONDITION_COLS)
+            .alias("conditions")
+            .map_elements(
                 lambda elt: ", ".join([cond for cond in elt.keys() if elt[cond] == 1]),
                 return_dtype=pl.String,
-            ).map_elements(
+            )
+            .map_elements(
                 lambda elt: "Conditions: " + elt if elt != "" else "Conditons: none",
                 return_dtype=pl.String,
             )
@@ -44,6 +48,7 @@ def main():
 
         processed_fp = os.path.join(datapath, processed_files[k])
         merged_df.write_parquet(processed_fp)
+
 
 if __name__ == "__main__":
     main()

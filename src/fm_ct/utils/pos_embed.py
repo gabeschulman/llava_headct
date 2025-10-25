@@ -4,11 +4,17 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+import numpy as np
+from typing import Sequence
+
 from timm.models.layers import to_2tuple, to_3tuple
 
 
 def build_sincos_position_embedding(
-    grid_size: Optional[int], embed_dim: int, spatial_dims: int = 3, temperature: float = 10000.0
+    grid_size: Optional[int],
+    embed_dim: int,
+    spatial_dims: int = 3,
+    temperature: float = 10000.0,
 ) -> torch.nn.Parameter:
     """
     Builds a sin-cos position embedding based on the given grid size, embed dimension, spatial dimensions, and temperature.
@@ -30,9 +36,11 @@ def build_sincos_position_embedding(
         grid_h = torch.arange(h, dtype=torch.float32)
         grid_w = torch.arange(w, dtype=torch.float32)
 
-        grid_h, grid_w = torch.meshgrid(grid_h, grid_w, indexing='ij')
+        grid_h, grid_w = torch.meshgrid(grid_h, grid_w, indexing="ij")
 
-        assert embed_dim % 4 == 0, "Embed dimension must be divisible by 4 for 2D sin-cos position embedding"
+        assert (
+            embed_dim % 4 == 0
+        ), "Embed dimension must be divisible by 4 for 2D sin-cos position embedding"
 
         pos_dim = embed_dim // 4
         omega = torch.arange(pos_dim, dtype=torch.float32) / pos_dim
@@ -40,12 +48,7 @@ def build_sincos_position_embedding(
         out_h = torch.einsum("m,d->md", [grid_h.flatten(), omega])
         out_w = torch.einsum("m,d->md", [grid_w.flatten(), omega])
         pos_emb = torch.cat(
-            [
-                torch.sin(out_h), 
-                torch.cos(out_h), 
-                torch.sin(out_w), 
-                torch.cos(out_w)
-            ], 
+            [torch.sin(out_h), torch.cos(out_h), torch.sin(out_w), torch.cos(out_w)],
             dim=1,
         )[None, :, :]
     elif spatial_dims == 3:
@@ -55,9 +58,11 @@ def build_sincos_position_embedding(
         grid_w = torch.arange(h, dtype=torch.float32)
         grid_d = torch.arange(d, dtype=torch.float32)
 
-        grid_h, grid_w, grid_d = torch.meshgrid(grid_h, grid_w, grid_d, indexing='ij')
+        grid_h, grid_w, grid_d = torch.meshgrid(grid_h, grid_w, grid_d, indexing="ij")
 
-        assert embed_dim % 6 == 0, "Embed dimension must be divisible by 6 for 3D sin-cos position embedding"
+        assert (
+            embed_dim % 6 == 0
+        ), "Embed dimension must be divisible by 6 for 3D sin-cos position embedding"
 
         pos_dim = embed_dim // 6
         omega = torch.arange(pos_dim, dtype=torch.float32) / pos_dim
@@ -77,22 +82,26 @@ def build_sincos_position_embedding(
             dim=1,
         )[None, :, :]
     else:
-        raise NotImplementedError("Spatial Dimension Size {spatial_dims} Not Implemented!")
+        raise NotImplementedError(
+            "Spatial Dimension Size {spatial_dims} Not Implemented!"
+        )
 
     pos_embed = nn.Parameter(pos_emb)
     pos_embed.requires_grad = False
 
     return pos_embed
 
-def nth_root(N,k):
+
+def nth_root(N, k):
     """Return greatest integer x such that x**k <= N"""
     """https://stackoverflow.com/questions/15978781/how-to-find-integer-nth-roots"""
-    x = int(N**(1/k))      
-    while (x+1)**k <= N:
+    x = int(N ** (1 / k))
+    while (x + 1) ** k <= N:
         x += 1
     while x**k > N:
         x -= 1
     return x
+
 
 # --------------------------------------------------------
 # Interpolate position embeddings for dynamic-resolution from checkpoint
@@ -100,8 +109,8 @@ def nth_root(N,k):
 # DeiT: https://github.com/facebookresearch/deit
 # --------------------------------------------------------
 def interpolate_pos_embed(
-    model: torch.nn.Module, 
-    checkpoint_model: collections.OrderedDict, 
+    model: torch.nn.Module,
+    checkpoint_model: collections.OrderedDict,
     spatial_dims: int = 3,
 ) -> None:
     """
@@ -115,56 +124,80 @@ def interpolate_pos_embed(
     :type spatial_dims: int
     :returns: None
     """
-    
-    if 'patch_embedding.position_embeddings' in checkpoint_model:
-        pos_embed_checkpoint = checkpoint_model['patch_embedding.position_embeddings']
+
+    if "patch_embedding.position_embeddings" in checkpoint_model:
+        pos_embed_checkpoint = checkpoint_model["patch_embedding.position_embeddings"]
         embedding_size = pos_embed_checkpoint.shape[-1]
         num_patches = model.patch_embedding.n_patches
-        num_extra_tokens = model.patch_embedding.position_embeddings.shape[-2] - num_patches
+        num_extra_tokens = (
+            model.patch_embedding.position_embeddings.shape[-2] - num_patches
+        )
         # height (== width) for the checkpoint position embedding
         if spatial_dims == 2 or spatial_dims == 3:
-            orig_size = int(nth_root(pos_embed_checkpoint.shape[-2] - num_extra_tokens, spatial_dims))
+            orig_size = int(
+                nth_root(
+                    pos_embed_checkpoint.shape[-2] - num_extra_tokens, spatial_dims
+                )
+            )
         else:
-            raise NotImplementedError(f"Spatial Dimension Size {spatial_dims} Not Implemented!")
-            
+            raise NotImplementedError(
+                f"Spatial Dimension Size {spatial_dims} Not Implemented!"
+            )
+
         # height (== width) for the new position embedding
         new_size = int(nth_root(num_patches, spatial_dims))
 
         # class_token and dist_token are kept unchanged
         if orig_size != new_size:
-            print("Position interpolate from origin size %d to new size %d" % (orig_size, new_size))
+            print(
+                "Position interpolate from origin size %d to new size %d"
+                % (orig_size, new_size)
+            )
             extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
             # only the position tokens are interpolated
             pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
             if spatial_dims == 2:
-                pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+                pos_tokens = pos_tokens.reshape(
+                    -1, orig_size, orig_size, embedding_size
+                ).permute(0, 3, 1, 2)
                 pos_tokens = torch.nn.functional.interpolate(
-                    pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+                    pos_tokens,
+                    size=(new_size, new_size),
+                    mode="bicubic",
+                    align_corners=False,
+                )
                 pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
             elif spatial_dims == 3:
-                pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, orig_size, embedding_size).permute(0, 4, 1, 2, 3)
+                pos_tokens = pos_tokens.reshape(
+                    -1, orig_size, orig_size, orig_size, embedding_size
+                ).permute(0, 4, 1, 2, 3)
                 pos_tokens = torch.nn.functional.interpolate(
-                    pos_tokens, size=(new_size, new_size, new_size), mode='trilinear', align_corners=False)
+                    pos_tokens,
+                    size=(new_size, new_size, new_size),
+                    mode="trilinear",
+                    align_corners=False,
+                )
                 pos_tokens = pos_tokens.permute(0, 2, 3, 4, 1).flatten(1, 3)
             else:
-                raise NotImplementedError(f"Spatial Dimension Size {spatial_dims} Not Implemented!")
-            
+                raise NotImplementedError(
+                    f"Spatial Dimension Size {spatial_dims} Not Implemented!"
+                )
+
             new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
-            checkpoint_model['patch_embedding.position_embeddings'] = new_pos_embed
-            
+            checkpoint_model["patch_embedding.position_embeddings"] = new_pos_embed
+
+
 # --------------------------------------------------------
 # Interpolate position embeddings for dynamic-resolution from model forward
 # Modified from References:
 # DeiT: https://github.com/facebookresearch/deit
 # --------------------------------------------------------
 
-import numpy as np
-from typing import Sequence
-            
+
 def interpolate_pos_embed_forward(
-    x: torch.Tensor, 
+    x: torch.Tensor,
     orig_size: Sequence[int],
-    position_embeddings: torch.Tensor, 
+    position_embeddings: torch.Tensor,
     patch_size: Sequence[int],
     spatial_dims: int = 3,
 ) -> None:
@@ -179,14 +212,16 @@ def interpolate_pos_embed_forward(
     :type spatial_dims: int
     :returns: None
     """
-    
+
     embedding_size = position_embeddings.shape[-1]
-    orig_num_patches = np.prod([im_d // p_d for im_d, p_d in zip(orig_size, patch_size)])
-    
+    orig_num_patches = np.prod(
+        [im_d // p_d for im_d, p_d in zip(orig_size, patch_size)]
+    )
+
     num_extra_tokens = position_embeddings.shape[-2] - orig_num_patches
-    
+
     img_size = x.shape[2:]
-    num_patches = np.prod([im_d // p_d for im_d, p_d in zip(img_size, patch_size)])        
+    num_patches = np.prod([im_d // p_d for im_d, p_d in zip(img_size, patch_size)])
 
     # height (== width) for the new position embedding
     orig_size = int(nth_root(orig_num_patches - num_extra_tokens, spatial_dims))
@@ -194,25 +229,39 @@ def interpolate_pos_embed_forward(
 
     # class_token and dist_token are kept unchanged
     if orig_size != new_size:
-        #print("Position interpolate from origin size %d to new size %d" % (orig_size, new_size))
+        # print("Position interpolate from origin size %d to new size %d" % (orig_size, new_size))
         extra_tokens = position_embeddings[:, :num_extra_tokens]
         # only the position tokens are interpolated
         pos_tokens = position_embeddings[:, num_extra_tokens:]
         if spatial_dims == 2:
-            pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+            pos_tokens = pos_tokens.reshape(
+                -1, orig_size, orig_size, embedding_size
+            ).permute(0, 3, 1, 2)
             pos_tokens = torch.nn.functional.interpolate(
-                pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+                pos_tokens,
+                size=(new_size, new_size),
+                mode="bicubic",
+                align_corners=False,
+            )
             pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
         elif spatial_dims == 3:
-            pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, orig_size, embedding_size).permute(0, 4, 1, 2, 3)
+            pos_tokens = pos_tokens.reshape(
+                -1, orig_size, orig_size, orig_size, embedding_size
+            ).permute(0, 4, 1, 2, 3)
             pos_tokens = torch.nn.functional.interpolate(
-                pos_tokens, size=(new_size, new_size, new_size), mode='trilinear', align_corners=False)
+                pos_tokens,
+                size=(new_size, new_size, new_size),
+                mode="trilinear",
+                align_corners=False,
+            )
             pos_tokens = pos_tokens.permute(0, 2, 3, 4, 1).flatten(1, 3)
         else:
-            raise NotImplementedError(f"Spatial Dimension Size {spatial_dims} Not Implemented!")
-        
+            raise NotImplementedError(
+                f"Spatial Dimension Size {spatial_dims} Not Implemented!"
+            )
+
         new_pos_embed = nn.Parameter(torch.cat((extra_tokens, pos_tokens), dim=1))
-        
+
         return new_pos_embed
     else:
         return position_embeddings

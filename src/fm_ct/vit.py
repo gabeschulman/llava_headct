@@ -96,7 +96,7 @@ class ViT(nn.Module):
             raise ValueError("hidden_size should be divisible by num_heads.")
 
         self.classification = classification
-        
+
         # patch embedding
         self.patch_embedding = PatchEmbeddingBlock(
             img_size=img_size,
@@ -109,30 +109,41 @@ class ViT(nn.Module):
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
         )
-        
+
         # transformer encoder
         self.blocks = nn.ModuleList(
             [
-                AttentionBlock(hidden_size, mlp_dim, num_heads, dropout_rate, \
-                    qkv_bias=qkv_bias, save_attn=False, lora=lora, \
-                    norm_layer=norm_layer)
+                AttentionBlock(
+                    hidden_size,
+                    mlp_dim,
+                    num_heads,
+                    dropout_rate,
+                    qkv_bias=qkv_bias,
+                    save_attn=False,
+                    lora=lora,
+                    norm_layer=norm_layer,
+                )
                 for _ in range(num_layers)
             ]
         )
-        
+
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
         self.norm = norm_layer(hidden_size, eps=1e-6)
-        
+
         # register tokens proposed by https://openreview.net/pdf?id=2dnO3LLiJ1
         self.num_register_tokens = num_register_tokens
         assert num_register_tokens >= 0
         self.register_tokens = (
-            nn.Parameter(torch.zeros(1, num_register_tokens, hidden_size)) if num_register_tokens else None
+            nn.Parameter(torch.zeros(1, num_register_tokens, hidden_size))
+            if num_register_tokens
+            else None
         )
-        
+
         if self.classification:
             if post_activation == "Tanh":
-                self.classification_head = nn.Sequential(nn.Linear(hidden_size, num_classes), nn.Tanh())
+                self.classification_head = nn.Sequential(
+                    nn.Linear(hidden_size, num_classes), nn.Tanh()
+                )
             else:
                 self.classification_head = nn.Linear(hidden_size, num_classes)  # type: ignore
 
@@ -143,11 +154,11 @@ class ViT(nn.Module):
 
     def forward(self, x):
         x = self.patch_embedding(x)
-            
+
         if hasattr(self, "cls_token"):
             cls_token = self.cls_token.expand(x.shape[0], -1, -1)
             x = torch.cat((cls_token, x), dim=1)
-        
+
         # add register tokens
         if self.register_tokens is not None:
             x = torch.cat(
@@ -158,17 +169,16 @@ class ViT(nn.Module):
                 ),
                 dim=1,
             )
-        
+
         hidden_states_out = []
         # apply Transformer blocks
         residual = None
         for blk in self.blocks:
             x, residual = blk(x, residual)
             hidden_states_out.append(x)
-            
+
         x = self.norm(x)
         if hasattr(self, "classification_head"):
             x = self.classification_head(x[:, 0])
-            
+
         return x, hidden_states_out
-    

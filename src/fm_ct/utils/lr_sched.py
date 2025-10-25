@@ -1,22 +1,21 @@
 import math
-import warnings
-from typing import Callable, Iterable, Optional, Tuple, Union
 
-import torch
-from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
-from transformers.trainer_utils import SchedulerType
 from transformers.utils import logging
-from transformers.utils.versions import require_version
 
 
 logger = logging.get_logger(__name__)
 
 
 def get_cosine_schedule_with_warmup(
-    optimizer: Optimizer, num_warmup_steps: int, num_training_steps: int, num_cycles: float = 0.5, lr_end: float = 1e-6, last_epoch: int = -1
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    num_cycles: float = 0.5,
+    lr_end: float = 1e-6,
+    last_epoch: int = -1,
 ):
     """
     Create a schedule with a learning rate that decreases following the values of the cosine function between the
@@ -41,22 +40,33 @@ def get_cosine_schedule_with_warmup(
     """
     lr_init = optimizer.defaults["lr"]
     if not (lr_init > lr_end):
-        raise ValueError(f"lr_end ({lr_end}) must be be smaller than initial lr ({lr_init})")
+        raise ValueError(
+            f"lr_end ({lr_end}) must be be smaller than initial lr ({lr_init})"
+        )
 
     def lr_lambda(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
         lr_range = lr_init - lr_end
-        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
-        lr_new = lr_end + lr_range * 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
+        progress = float(current_step - num_warmup_steps) / float(
+            max(1, num_training_steps - num_warmup_steps)
+        )
+        lr_new = lr_end + lr_range * 0.5 * (
+            1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)
+        )
         lr_new /= lr_init
         return max(0.0, lr_new)
-    
+
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
 def get_polynomial_decay_schedule_with_warmup(
-    optimizer, num_warmup_steps, num_training_steps, lr_end=1e-7, power=1.0, last_epoch=-1
+    optimizer,
+    num_warmup_steps,
+    num_training_steps,
+    lr_end=1e-7,
+    power=1.0,
+    last_epoch=-1,
 ):
     """
     Create a schedule with a learning rate that decreases as a polynomial decay from the initial lr set in the
@@ -84,7 +94,9 @@ def get_polynomial_decay_schedule_with_warmup(
 
     lr_init = optimizer.defaults["lr"]
     if not (lr_init > lr_end):
-        raise ValueError(f"lr_end ({lr_end}) must be be smaller than initial lr ({lr_init})")
+        raise ValueError(
+            f"lr_end ({lr_end}) must be be smaller than initial lr ({lr_init})"
+        )
 
     def lr_lambda(current_step: int):
         if current_step < num_warmup_steps:
@@ -101,7 +113,9 @@ def get_polynomial_decay_schedule_with_warmup(
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
-def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: int, last_epoch: int = -1):
+def get_constant_schedule_with_warmup(
+    optimizer: Optimizer, num_warmup_steps: int, last_epoch: int = -1
+):
     """
     Create a schedule with a constant learning rate preceded by a warmup period during which the learning rate
     increases linearly between 0 and the initial lr set in the optimizer.
@@ -122,19 +136,30 @@ def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: in
         return 1.0
 
     return LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
-    
-    
+
+
 def get_lr_scheduler(config, optimizer, num_warmup_steps, total_steps, min_lr):
     if config.TRAIN.SCHEDULER == "cosine":
-        scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, \
-                num_training_steps=total_steps, lr_end=min_lr)
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=total_steps,
+            lr_end=min_lr,
+        )
     elif config.TRAIN.SCHEDULER == "poly":
-        scheduler = get_polynomial_decay_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, \
-                num_training_steps=total_steps, lr_end=min_lr, power=2.0, last_epoch=-1)
+        scheduler = get_polynomial_decay_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=total_steps,
+            lr_end=min_lr,
+            power=2.0,
+            last_epoch=-1,
+        )
     elif config.TRAIN.SCHEDULER == "constant":
-        scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, \
-                num_training_steps=total_steps)
+        scheduler = get_constant_schedule_with_warmup(
+            optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=total_steps
+        )
     else:
         raise ValueError(f"Scheduler {config.TRAIN.SCHEDULER} not supported")
-    
+
     return scheduler

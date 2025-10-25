@@ -16,7 +16,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "torch",
-        "torchvision", 
+        "torchvision",
         "polars",
         "numpy",
         "pandas",
@@ -27,5 +27,5 @@ setup(
             "black",
             "flake8",
         ]
-    }
+    },
 )
