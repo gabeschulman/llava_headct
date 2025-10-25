@@ -10,7 +10,7 @@ class LLaVAHeadCT(nn.Module):
         self,
         vision_encoder_weights: str,
         vision_encoder_kwargs: dict,
-        projector_in_channels: int,
+        projector_input_channels: int,
         projector_inner_channels: int,
         projector_out_channels: int,
         decoder_model_name: str,
@@ -20,12 +20,11 @@ class LLaVAHeadCT(nn.Module):
             weights_path=vision_encoder_weights, **vision_encoder_kwargs
         )
         self.projector = Projector(
-            in_channels=projector_in_channels,
+            input_channels=projector_input_channels,
             inner_channels=projector_inner_channels,
             out_channels=projector_out_channels,
         )
         self.decoder = Decoder(model_name=decoder_model_name)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, image, text: Optional[str] = None, attention_mask=None):
         image_features = self.encoder(image)

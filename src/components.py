@@ -28,12 +28,12 @@ class Encoder(ViT):
 
 
 class Projector(nn.Module):
-    def __init__(self, in_channels, inner_channels, out_channels):
+    def __init__(self, input_channels, inner_channels, out_channels):
         super().__init__()
-        self.pre_norm = nn.LayerNorm(in_channels)
+        self.pre_norm = nn.LayerNorm(input_channels)
 
         self.proj = nn.Sequential(
-            nn.Linear(in_channels, inner_channels),
+            nn.Linear(input_channels, inner_channels),
             nn.GELU(),
             nn.Linear(inner_channels, out_channels),
         )
@@ -49,5 +49,7 @@ class Decoder(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
-    def forward(self, input_embeds, attention_mask=None):
-        return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
+    def forward(self, input_embeds, attention_mask=None, **kwargs):
+        return self.model(
+            inputs_embeds=input_embeds, attention_mask=attention_mask, **kwargs
+        )
