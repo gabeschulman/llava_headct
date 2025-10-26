@@ -1,4 +1,4 @@
-name: /gpfs/scratch/gs4342/conda_envs/llava2
+name: llava2
 channels:
   - defaults
 dependencies:
@@ -320,4 +320,3 @@ dependencies:
       - wrapt==1.17.3
       - zarr==3.1.3
       - zipp==3.23.0
-prefix: /gpfs/scratch/gs4342/conda_envs/llava2
