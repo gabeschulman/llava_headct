@@ -1,8 +1,11 @@
 import polars as pl
+import torch
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from monai import transforms
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from src.fm_ct.data.transforms import MultipleWindowScaleStack
+from transformers import AutoTokenizer
 
 
 class ConditionClassificationDataset(Dataset):
@@ -19,6 +22,9 @@ class ConditionClassificationDataset(Dataset):
     def __init__(
         self,
         image_file_location: str,
+        use_cached_images: bool = False,
+        tokenizer_model_name: Optional[str] = None,
+        max_text_length: int = 512,
         roi: Tuple[int, int, int] = (96, 96, 96),
         window_sizes: List[Tuple[int, int]] = [(40, 80), (80, 200), (600, 2800)],
         pixdim: Tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -30,7 +36,9 @@ class ConditionClassificationDataset(Dataset):
         Initialize the dataset.
 
         Args:
-            image_paths: List of paths to NIfTI files
+            image_file_location: Path to parquet file with image paths and conditions
+            tokenizer_model_name: Name of the HuggingFace model to use for tokenization
+            max_text_length: Maximum length for tokenized text
             roi: Region of interest size (D, H, W)
             window_sizes: List of (center, width) tuples for windowing
             pixdim: Target pixel dimensions for resampling
@@ -39,11 +47,19 @@ class ConditionClassificationDataset(Dataset):
             allow_missing_keys: Whether to allow missing keys in transforms
         """
         self.image_df: pl.DataFrame = pl.read_parquet(image_file_location)
-        self.image_paths: List[str] = self.image_df["img_path"].to_list()
+
+        image_path_col: str = "img_path" if not use_cached_images else "cached_path"
+        self.image_paths: List[str] = self.image_df[image_path_col].to_list()
         self.conditions: List[str] = self.image_df["conditions"].to_list()
 
         self.roi: Tuple[int, int, int] = roi
         self.window_sizes: List[Tuple[int, int]] = window_sizes
+
+        # Initialize tokenizer if model name is provided
+        self.tokenizer = None
+        self.max_text_length = max_text_length
+        if tokenizer_model_name:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model_name)
 
         # Create the data list in MONAI format
         self.data: List[dict] = [
@@ -51,10 +67,12 @@ class ConditionClassificationDataset(Dataset):
             for path, cond in zip(self.image_paths, self.conditions)
         ]
 
-        # Initialize transforms
-        self.transforms = self._build_transforms(
-            roi, window_sizes, pixdim, axcodes, mode, allow_missing_keys
-        )
+        # Initialize transforms - only needed if not using cached images (preferred)
+        self.transforms = None
+        if not use_cached_images:
+            self.transforms = self._build_transforms(
+                roi, window_sizes, pixdim, axcodes, mode, allow_missing_keys
+            )
 
     def _build_transforms(
         self,
@@ -118,13 +136,33 @@ class ConditionClassificationDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         sample_data = self.data[idx].copy()
-        sample_image = sample_data["image_item"]
-        transformed_sample = self.transforms(sample_image)
 
-        return {
-            "image": transformed_sample["image"],
+        if self.transforms:
+            sample_image = sample_data["image_item"]
+            transformed_sample = self.transforms(sample_image)
+            image_tensor = transformed_sample["image"]
+        else:
+            cached_path = sample_data["image_item"]["image"]
+            image_array = np.load(cached_path)
+            image_tensor = torch.from_numpy(image_array)
+
+        result = {
+            "image": image_tensor,
             "condition": sample_data["condition"],
         }
+
+        if self.tokenizer:
+            tokenized = self.tokenizer(
+                sample_data["condition"],
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=self.max_text_length,
+            )
+            result["input_ids"] = tokenized["input_ids"].squeeze(0)
+            result["attention_mask"] = tokenized["attention_mask"].squeeze(0)
+
+        return result
 
 
 def create_condition_classification_dataloader(
@@ -133,19 +171,25 @@ def create_condition_classification_dataloader(
     num_workers: int = 1,
     pin_memory: bool = True,
     shuffle: bool = False,
+    use_cached_images: bool = False,
+    tokenizer_model_name: Optional[str] = None,
+    max_text_length: int = 512,
     roi: Tuple[int, int, int] = (96, 96, 96),
     window_sizes: List[Tuple[int, int]] = [(40, 80), (80, 200), (600, 2800)],
+    persistent_workers: bool = True,
     **dataset_kwargs,
 ) -> DataLoader:
     """
     Create a DataLoader for Head CT feature extraction.
 
     Args:
-        image_paths: List of paths to NIfTI files
+        image_file_location: Path to parquet file with image paths
         batch_size: Batch size for the DataLoader
         num_workers: Number of worker processes for data loading
         pin_memory: Whether to pin memory for faster GPU transfer
         shuffle: Whether to shuffle the data
+        tokenizer_model_name: Name of HuggingFace model for tokenization
+        max_text_length: Maximum length for tokenized text
         roi: Region of interest size
         window_sizes: List of windowing parameters
         **dataset_kwargs: Additional arguments for the dataset
@@ -155,8 +199,11 @@ def create_condition_classification_dataloader(
     """
     dataset = ConditionClassificationDataset(
         image_file_location=image_file_location,
+        tokenizer_model_name=tokenizer_model_name,
+        max_text_length=max_text_length,
         roi=roi,
         window_sizes=window_sizes,
+        use_cached_images=use_cached_images,
         **dataset_kwargs,
     )
 
@@ -166,6 +213,7 @@ def create_condition_classification_dataloader(
         num_workers=num_workers,
         pin_memory=pin_memory,
         shuffle=shuffle,
+        persistent_workers=persistent_workers,
         collate_fn=None,
     )
 

@@ -4,9 +4,45 @@ import os
 from pathlib import Path
 import torch
 from torch import nn
+from torch.cuda.amp import autocast, GradScaler
 from src.logger import setup_logging
 from src.model import LLaVAHeadCT
 from src.dataloader import create_condition_classification_dataloader
+
+
+def validate(model, dataloader, criterion, device, use_amp=True):
+    """Run validation and return average loss."""
+    model.eval()
+    total_loss = 0.0
+    num_batches = 0
+
+    with torch.no_grad():
+        for batch in dataloader:
+            images = batch["image"].to(device, non_blocking=True)
+            target_ids = batch["input_ids"].to(device, non_blocking=True)
+            attention_mask = batch["attention_mask"].to(device, non_blocking=True)
+
+            with autocast(enabled=use_amp):
+                outputs = model(
+                    images, input_ids=target_ids, attention_mask=attention_mask
+                )
+
+                num_image_tokens = 513
+                text_logits = outputs.logits[:, num_image_tokens:, :].contiguous()
+
+                shift_logits = text_logits[:, :-1, :].contiguous()
+                shift_labels = target_ids[:, 1:].contiguous()
+
+                vocab_size = shift_logits.size(-1)
+                loss = criterion(
+                    shift_logits.view(-1, vocab_size), shift_labels.view(-1)
+                )
+
+            total_loss += loss.item()
+            num_batches += 1
+
+    avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+    return avg_loss
 
 
 def main():
@@ -32,7 +68,7 @@ def main():
         projector_inner_channels=config["projector"]["inner_channels"],
         projector_out_channels=config["projector"]["out_channels"],
         decoder_model_name=config["decoder"]["model_name"],
-        projector_dropout=config["training"].get("projector_dropout", 0.0),
+        projector_dropout=config["training"].get("projector_dropout", 0.1),
     )
     model.to(device)
 
@@ -41,63 +77,112 @@ def main():
     logger.info(f"Total parameters: {total_params:,}")
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
-    logger.info("Setting up dataloader...")
+    logger.info("Setting up train dataloader...")
     train_file = os.path.join(
-        config["dataset"]["datapath"], config["dataset"]["processed_files"]["train"]
+        config["dataset"]["cached_images_dir"],
+        config["dataset"]["cached_files"]["train"],
     )
     batch_size = config["training"]["batch_size"]
-    dataloader = create_condition_classification_dataloader(train_file, batch_size)
-    logger.info(f"Dataset size: {len(dataloader.dataset)}")
+    num_workers = config["training"].get("num_workers", 4)
+    train_dataloader = create_condition_classification_dataloader(
+        train_file,
+        batch_size,
+        num_workers=num_workers,
+        pin_memory=True,
+        shuffle=True,
+        tokenizer_model_name=config["decoder"]["model_name"],
+        max_text_length=512,
+        use_cached_images=True,
+    )
+    logger.info(f"Train dataset size: {len(train_dataloader.dataset)}")
     logger.info(f"Batch size: {batch_size}")
-    logger.info(f"Total batches: {len(dataloader)}")
+    logger.info(f"Total train batches: {len(train_dataloader)}")
+
+    logger.info("Setting up validation dataloader...")
+    val_file = os.path.join(
+        config["dataset"]["cached_images_dir"], config["dataset"]["cached_files"]["val"]
+    )
+    val_dataloader = create_condition_classification_dataloader(
+        val_file,
+        batch_size,
+        num_workers=num_workers,
+        pin_memory=True,
+        shuffle=False,
+        tokenizer_model_name=config["decoder"]["model_name"],
+        max_text_length=512,
+        use_cached_images=True,
+    )
+    logger.info(f"Val dataset size: {len(val_dataloader.dataset)}")
+    logger.info(f"Total val batches: {len(val_dataloader)}")
+    logger.info(f"Num workers: {num_workers}")
 
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["training"].get("base_lr", 1e-4),
         weight_decay=config["training"].get("weight_decay", 0.04),
     )
+
+    scaler = GradScaler()
+    use_amp = config["training"].get("use_amp", True)
+
     criterion = nn.CrossEntropyLoss(ignore_index=-100)
     num_epochs = config.get("num_epochs", 10)
 
     logger.info(f"Training for {num_epochs} epochs")
     logger.info(f"Learning rate: {config['training'].get('base_lr', 1e-4)}")
     logger.info(f"Weight decay: {config['training'].get('weight_decay', 0.04)}")
+    logger.info(f"Mixed precision (AMP): {use_amp}")
+
+    best_val_loss = float("inf")
+    best_epoch = 0
 
     for epoch in range(num_epochs):
         model.train()
-        total_loss = 0.0
+        total_train_loss = 0.0
         epoch_start_time = datetime.now()
 
         logger.info(f"Starting epoch {epoch+1}/{num_epochs}")
 
-        for batch_idx, batch in enumerate(dataloader):
-            images = batch["image"].to(device)
-            condition_texts = batch["condition"]
+        for batch_idx, batch in enumerate(train_dataloader):
+            images = batch["image"].to(device, non_blocking=True)
+            target_ids = batch["input_ids"].to(device, non_blocking=True)
+            attention_mask = batch["attention_mask"].to(device, non_blocking=True)
 
-            target_tokens = model.decoder.tokenizer(
-                condition_texts, return_tensors="pt", padding=True, truncation=True
-            )
-            target_ids = target_tokens["input_ids"].to(device)
-            outputs = model(images)
+            with autocast(enabled=use_amp):
+                outputs = model(
+                    images, input_ids=target_ids, attention_mask=attention_mask
+                )
 
-            shift_logits = outputs.logits[..., :-1, :].contiguous()
-            shift_labels = target_ids[..., 1:].contiguous()
-            vocab_size = shift_logits.size(-1)
-            loss = criterion(shift_logits.view(-1, vocab_size), shift_labels.view(-1))
+                num_image_tokens = 513
+                text_logits = outputs.logits[:, num_image_tokens:, :].contiguous()
+
+                shift_logits = text_logits[:, :-1, :].contiguous()
+                shift_labels = target_ids[:, 1:].contiguous()
+
+                vocab_size = shift_logits.size(-1)
+                loss = criterion(
+                    shift_logits.view(-1, vocab_size), shift_labels.view(-1)
+                )
+
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
-            total_loss += loss.item()
+            total_train_loss += loss.item()
 
             if batch_idx % 10 == 0:
                 logger.info(
-                    f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}"
+                    f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {loss.item():.4f}"
                 )
 
             if batch_idx % 100 == 0 and batch_idx > 0:
                 checkpoint_path = (
-                    f"checkpoints/checkpoint_epoch_{epoch+1}_batch_{batch_idx}.pth"
+                    f"checkpoints/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
                 )
                 Path("checkpoints").mkdir(exist_ok=True)
                 torch.save(
@@ -112,15 +197,56 @@ def main():
                 )
                 logger.info(f"Saved checkpoint: {checkpoint_path}")
 
-    avg_loss = total_loss / len(dataloader)
-    epoch_time = datetime.now() - epoch_start_time
-    logger.info(
-        f"Epoch {epoch} completed, Average Loss: {avg_loss:.4f}, Time Taken: {epoch_time}"
-    )
+        # Calculate average training loss
+        avg_train_loss = total_train_loss / len(train_dataloader)
+        epoch_time = datetime.now() - epoch_start_time
 
-    final_model_path = f"checkpoints/final_model_epoch_{num_epochs}.pth"
-    torch.save(model.state_dict(), final_model_path)
-    logger.info(f"Saved final model: {final_model_path}")
+        # Run validation
+        logger.info(f"Running validation for epoch {epoch+1}...")
+        val_loss = validate(model, val_dataloader, criterion, device, use_amp)
+
+        logger.info(
+            f"Epoch {epoch+1}/{num_epochs} completed - "
+            f"Train Loss: {avg_train_loss:.4f}, "
+            f"Val Loss: {val_loss:.4f}, "
+            f"Time: {epoch_time}"
+        )
+
+        # Save best model based on validation loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch + 1
+            best_model_path = "checkpoints/best_model.pth"
+            Path("checkpoints").mkdir(exist_ok=True)
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "train_loss": avg_train_loss,
+                    "val_loss": val_loss,
+                },
+                best_model_path,
+            )
+            logger.info(f"New best model saved! Val Loss: {val_loss:.4f}")
+
+        # Save epoch checkpoint
+        epoch_checkpoint_path = f"checkpoints/epoch_{epoch+1}.pth"
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "train_loss": avg_train_loss,
+                "val_loss": val_loss,
+            },
+            epoch_checkpoint_path,
+        )
+
+    logger.info(
+        f"Training completed! Best validation loss: {best_val_loss:.4f} at epoch {best_epoch}"
+    )
+    logger.info("Best model saved at: checkpoints/best_model.pth")
 
 
 if __name__ == "__main__":

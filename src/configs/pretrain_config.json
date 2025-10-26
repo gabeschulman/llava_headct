@@ -1,17 +1,18 @@
 {
     "decoder": {
-        "model_name": "Qwen/Qwen3-8B"
+        "model_name": "Qwen/Qwen3-1.7B"
     },
     "projector": {
         "input_channels": 768,
-        "inner_channels": 2048,
-        "out_channels": 4096
+        "inner_channels": 1024,
+        "out_channels": 2048
     },
     "vision_encoder": {
         "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",
         "vision_encoder_in_chans": 3,
         "vision_encoder_img_size": 96,
-        "vision_encoder_patch_size": 12
+        "vision_encoder_patch_size": 12,
+        "num_image_tokens": 513
     },
     "dataset": {
         "datapath": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/",
@@ -25,14 +26,21 @@
             "test": "nyu_test_processed.parquet",
             "train": "nyu_train_processed.parquet",
             "val": "nyu_val_processed.parquet"
+        },
+        "cached_images_dir": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/cached_images",
+        "cached_files": {
+            "test": "test/nyu_test_cached.parquet",
+            "train": "train/nyu_train_cached.parquet",
+            "val": "val/nyu_val_cached.parquet"
         }
     },
     "training": {
-        "batch_size": 16,
-        "num_workers": 16,
+        "batch_size": 32,
+        "num_workers": 8,
         "max_epochs": 200,
         "base_lr": 5e-5,
         "projector_dropout": 0.1,
-        "weight_decay": 0.04
+        "weight_decay": 0.04,
+        "use_amp": true
     }
 }

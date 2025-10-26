@@ -60,6 +60,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model.gradient_checkpointing_enable()
 
     def forward(self, input_embeds, attention_mask=None, **kwargs):
         return self.model(

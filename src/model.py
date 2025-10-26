@@ -35,33 +35,54 @@ class LLaVAHeadCT(nn.Module):
         )
         self.decoder = Decoder(model_name=decoder_model_name)
 
-    def forward(self, image, text: Optional[str] = None, attention_mask=None):
+    def forward(
+        self,
+        image,
+        text: Optional[str] = None,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ):
         image_features, _ = self.encoder(image)
-        projected_image_features = self.projector(image_features)
+        batch_size, num_tokens, feature_dim = image_features.shape
+        image_features_flat = image_features.view(-1, feature_dim)
 
-        if text is not None:
-            text_tokens = self.decoder.tokenizer(
-                text, return_tensors="pt", padding=True, truncation=True
-            )
-            text_input_ids = text_tokens["input_ids"].to(image.device)
+        projected_features_flat = self.projector(image_features_flat)
+        projected_image_features = projected_features_flat.view(
+            batch_size, num_tokens, -1
+        )
+
+        if text is not None or input_ids is not None:
+            if input_ids is not None:
+                text_input_ids = input_ids
+                text_attention_mask = (
+                    attention_mask
+                    if attention_mask is not None
+                    else torch.ones_like(input_ids)
+                )
+            else:
+                text_tokens = self.decoder.tokenizer(
+                    text, return_tensors="pt", padding=True, truncation=True
+                )
+                text_input_ids = text_tokens["input_ids"].to(image.device)
+                text_attention_mask = text_tokens["attention_mask"].to(image.device)
+
             text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
 
             combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
 
-            if attention_mask is None:
-                img_mask = torch.ones(
-                    projected_image_features.shape[:2], device=image.device
-                )
-                text_mask = text_tokens["attention_mask"].to(image.device)
-                attention_mask = torch.cat([img_mask, text_mask], dim=1)
+            img_mask = torch.ones(
+                projected_image_features.shape[:2],
+                device=image.device,
+                dtype=text_attention_mask.dtype,
+            )
+            combined_attention_mask = torch.cat([img_mask, text_attention_mask], dim=1)
         else:
             combined_embeds = projected_image_features
-            if attention_mask is None:
-                attention_mask = torch.ones(
-                    combined_embeds.shape[:2], device=image.device
-                )
+            combined_attention_mask = torch.ones(
+                combined_embeds.shape[:2], device=image.device
+            )
 
         outputs = self.decoder(
-            inputs_embeds=combined_embeds, attention_mask=attention_mask
+            input_embeds=combined_embeds, attention_mask=combined_attention_mask
         )
         return outputs
