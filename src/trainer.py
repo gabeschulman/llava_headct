@@ -24,6 +24,9 @@ def main():
     logger.info("Initializing model...")
     model = LLaVAHeadCT(
         vision_encoder_weights=config["vision_encoder"]["vision_encoder_weights"],
+        vision_encoder_in_chans=config["vision_encoder"]["vision_encoder_in_chans"],
+        vision_encoder_img_size=config["vision_encoder"]["vision_encoder_img_size"],
+        vision_encoder_patch_size=config["vision_encoder"]["vision_encoder_patch_size"],
         projector_input_channels=config["projector"]["input_channels"],
         projector_inner_channels=config["projector"]["inner_channels"],
         projector_out_channels=config["projector"]["out_channels"],

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Sequence
 
 from src.components import Encoder, Projector, Decoder
 import torch
@@ -9,6 +9,9 @@ class LLaVAHeadCT(nn.Module):
     def __init__(
         self,
         vision_encoder_weights: str,
+        vision_encoder_in_chans: int,
+        vision_encoder_img_size: Sequence[int] | int,
+        vision_encoder_patch_size: Sequence[int] | int,
         projector_input_channels: int,
         projector_inner_channels: int,
         projector_out_channels: int,
@@ -20,6 +23,9 @@ class LLaVAHeadCT(nn.Module):
         super().__init__()
         self.encoder = Encoder(
             weights_path=vision_encoder_weights,
+            in_chans=vision_encoder_in_chans,
+            img_size=vision_encoder_img_size,
+            patch_size=vision_encoder_patch_size,
         )
         self.projector = Projector(
             input_channels=projector_input_channels,

@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import torch
 from torch import nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -5,8 +7,17 @@ from src.fm_ct.vit import ViT
 
 
 class Encoder(ViT):
-    def __init__(self, weights_path: str, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        weights_path: str,
+        in_chans: int,
+        img_size: Sequence[int] | int,
+        patch_size: Sequence[int] | int,
+        **kwargs,
+    ):
+        super().__init__(
+            in_chans=in_chans, img_size=img_size, patch_size=patch_size, **kwargs
+        )
         self.weights_path = weights_path
         self._load_weights()
         self._freeze_weights()

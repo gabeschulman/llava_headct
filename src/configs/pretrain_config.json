@@ -8,7 +8,10 @@
         "out_channels": 4096
     },
     "vision_encoder": {
-        "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth"
+        "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",
+        "vision_encoder_in_chans": 3,
+        "vision_encoder_img_size": 96,
+        "vision_encoder_patch_size": 12
     },
     "dataset": {
         "datapath": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/",
