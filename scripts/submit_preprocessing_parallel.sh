@@ -8,10 +8,10 @@ MEM_PER_JOB=64GB
 TIME_LIMIT=4:00:00
 
 # Define paths
-TRAIN_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_train_processed.parquet"
-VAL_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_val_processed.parquet"
-TEST_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_test_processed.parquet"
-CACHE_DIR="/$USER/scratch/gs4342/ct_datasets_backup/nyu/cached_images"
+TRAIN_INPUT="/gpfs/scratch/$USER/ct_datasets_backup/nyu/nyu_train_processed.parquet"
+VAL_INPUT="/gpfs/scratch/$USER/ct_datasets_backup/nyu/nyu_val_processed.parquet"
+TEST_INPUT="/gpfs/scratch/$USER/ct_datasets_backup/nyu/nyu_test_processed.parquet"
+CACHE_DIR="/gpfs/data/razavianlab/data/capstone_f25/cached_images"
 
 mkdir -p logs
 

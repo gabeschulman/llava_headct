@@ -1,5 +1,8 @@
 # LLaVA Head CT
 
+Data directory: `/gpfs/data/razavianlab/data/capstone_f25/cached_images/`
+
+Contains train/val/test splits.
 
 ## Bash config
 
