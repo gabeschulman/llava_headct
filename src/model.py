@@ -36,7 +36,7 @@ class LLaVAHeadCT(nn.Module):
         self.decoder = Decoder(model_name=decoder_model_name)
 
     def forward(self, image, text: Optional[str] = None, attention_mask=None):
-        image_features = self.encoder(image)
+        image_features, _ = self.encoder(image)
         projected_image_features = self.projector(image_features)
 
         if text is not None:

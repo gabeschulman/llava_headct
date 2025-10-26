@@ -15,7 +15,6 @@ mkdir -p /gpfs/scratch/gs4342/llava_headct/checkpoints
 mkdir -p /gpfs/scratch/gs4342/llava_headct/models
 
 module load cuda/11.8
-# module load gcc/10.2.0
 
 # activate conda env
 source activate /gpfs/scratch/gs4342/conda_envs/llava2
