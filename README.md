@@ -23,16 +23,12 @@ conda activate /gpfs/scratch/$USER/conda_envs/llava2
 pre-commit install
 ```
 
-
-
 To submit jobs run (e.g.)
 ```bash
 sbatch scripts/submit_job_classsification.sh
 ```
 
-Prints job ID
-
-To monitor the job, run:
+^This prints the job ID from SLURM. To monitor the job, run:
 
 ```bash
 tail -f logs/slurm_$JOB_ID.out

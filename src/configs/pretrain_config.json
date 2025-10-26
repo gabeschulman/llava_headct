@@ -15,7 +15,7 @@
         "num_image_tokens": 513
     },
     "dataset": {
-        "datapath": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/",
+        "datapath": "/gpfs/data/razavianlab/data/capstone_f25/flat_files",
         "image_files": {
             "test": "nyu_test_label.csv",
             "train": "nyu_train_label.csv",

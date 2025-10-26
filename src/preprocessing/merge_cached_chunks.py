@@ -13,6 +13,7 @@ def merge_chunks(
     input_parquet: str,
     cache_dir: str,
     total_chunks: int,
+    path_prefix_replace: tuple = None,
 ) -> str:
     """
     Merge cached chunks into a single parquet file with cached paths.
@@ -21,6 +22,7 @@ def merge_chunks(
         input_parquet: Original parquet file
         cache_dir: Directory where cached images were saved
         total_chunks: Total number of chunks that were processed
+        path_prefix_replace: Optional tuple of (old_prefix, new_prefix) to replace in cached paths
 
     Returns:
         Path to merged parquet file
@@ -59,6 +61,10 @@ def merge_chunks(
         # Merge cached paths
         for local_idx, cache_path_str in enumerate(cached_paths):
             global_idx = start_idx + local_idx
+            # Apply path replacement if specified
+            if cache_path_str is not None and path_prefix_replace:
+                old_prefix, new_prefix = path_prefix_replace
+                cache_path_str = cache_path_str.replace(old_prefix, new_prefix)
             all_cached_paths[global_idx] = cache_path_str
             if cache_path_str is not None:
                 total_successful += 1
@@ -89,7 +95,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--total-chunks", type=int, required=True, help="Total number of chunks"
     )
+    parser.add_argument(
+        "--old-prefix",
+        help="Old path prefix to replace in cached paths",
+    )
+    parser.add_argument(
+        "--new-prefix",
+        help="New path prefix to use in cached paths",
+    )
 
     args = parser.parse_args()
 
-    merge_chunks(args.input, args.cache_dir, args.total_chunks)
+    path_replace = None
+    if args.old_prefix and args.new_prefix:
+        path_replace = (args.old_prefix, args.new_prefix)
+
+    merge_chunks(args.input, args.cache_dir, args.total_chunks, path_replace)
