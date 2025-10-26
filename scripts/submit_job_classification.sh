@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=llava_head_ct_pretrain_$USER
+#SBATCH --job-name=llava_head_ct_pretrain
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=1
@@ -7,8 +7,8 @@
 #SBATCH --time=2:00:00
 #SBATCH --mem=64G
 #SBATCH --partition=a100_short
-#SBATCH --output=/gpfs/scratch/$USER/llava_headct/logs/slurm_%j.out
-#SBATCH --error=/gpfs/scratch/$USER/llava_headct/logs/slurm_%j.err
+#SBATCH --output=logs/slurm_%j.out
+#SBATCH --error=logs/slurm_%j.err
 
 mkdir -p /gpfs/scratch/$USER/llava_headct/logs
 mkdir -p /gpfs/scratch/$USER/llava_headct/checkpoints
@@ -23,8 +23,9 @@ source activate /gpfs/scratch/$USER/conda_envs/llava2
 export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
 
-export PYTHONPATH="/gpfs/scratch/$USER/llava_headct:$PYTHONPATH"
+# Change to repo directory
 cd /gpfs/scratch/$USER/llava_headct
+export PYTHONPATH="/gpfs/scratch/$USER/llava_headct:$PYTHONPATH"
 
 # Log job info
 echo "Job ID: $SLURM_JOB_ID"
