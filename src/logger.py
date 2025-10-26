@@ -4,8 +4,8 @@ from pathlib import Path
 from datetime import datetime
 
 
-def setup_logging(log_dir: str = "logs"):
-    log_dir = Path(log_dir)
+def setup_logging():
+    log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
