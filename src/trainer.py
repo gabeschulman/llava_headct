@@ -1,5 +1,6 @@
-import datetime
+from datetime import datetime
 import json
+import os
 from pathlib import Path
 import torch
 from torch import nn
@@ -41,11 +42,13 @@ def main():
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
     logger.info("Setting up dataloader...")
-    dataloader = create_condition_classification_dataloader(
-        config["dataset"]["datapath"], config["dataset"]["batch_size"]
+    train_file = os.path.join(
+        config["dataset"]["datapath"], config["dataset"]["processed_files"]["train"]
     )
+    batch_size = config["training"]["batch_size"]
+    dataloader = create_condition_classification_dataloader(train_file, batch_size)
     logger.info(f"Dataset size: {len(dataloader.dataset)}")
-    logger.info(f"Batch size: {config['dataset']['batch_size']}")
+    logger.info(f"Batch size: {batch_size}")
     logger.info(f"Total batches: {len(dataloader)}")
 
     optimizer = torch.optim.Adam(
