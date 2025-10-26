@@ -2,6 +2,7 @@
 
 ## Environment Setup
 ```bash
-conda env create -f environment.yml
-conda activate llava2
+bash srcipts/setup_env.sh
+conda activate /gpfs/scratch/$USER/conda_envs/llava2
+pre-commit install
 ```

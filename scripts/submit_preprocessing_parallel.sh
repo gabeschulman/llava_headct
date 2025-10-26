@@ -8,10 +8,10 @@ MEM_PER_JOB=64GB
 TIME_LIMIT=4:00:00
 
 # Define paths
-TRAIN_INPUT="/gpfs/scratch/gs4342/ct_datasets_backup/nyu/nyu_train_processed.parquet"
-VAL_INPUT="/gpfs/scratch/gs4342/ct_datasets_backup/nyu/nyu_val_processed.parquet"
-TEST_INPUT="/gpfs/scratch/gs4342/ct_datasets_backup/nyu/nyu_test_processed.parquet"
-CACHE_DIR="/gpfs/scratch/gs4342/ct_datasets_backup/nyu/cached_images"
+TRAIN_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_train_processed.parquet"
+VAL_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_val_processed.parquet"
+TEST_INPUT="/$USER/scratch/gs4342/ct_datasets_backup/nyu/nyu_test_processed.parquet"
+CACHE_DIR="/$USER/scratch/gs4342/ct_datasets_backup/nyu/cached_images"
 
 mkdir -p logs
 
@@ -30,9 +30,9 @@ for chunk_id in $(seq 0 $((NUM_CHUNKS-1))); do
 #SBATCH --partition=cpu_short
 
 source ~/.bashrc
-source activate /gpfs/scratch/gs4342/conda_envs/llava2
-export PYTHONPATH="/gpfs/scratch/gs4342/llava_headct:\$PYTHONPATH"
-cd /gpfs/scratch/gs4342/llava_headct
+source activate /gpfs/scratch/$USER/conda_envs/llava2
+export PYTHONPATH="/gpfs/scratch/$USER/llava_headct:\$PYTHONPATH"
+cd /gpfs/scratch/$USER/llava_headct
 
 echo "Processing training set chunk ${chunk_id}/${NUM_CHUNKS}..."
 python src/preprocessing/cache_preprocessed_images_chunked.py \\
@@ -67,9 +67,9 @@ for chunk_id in $(seq 0 $((NUM_VAL_CHUNKS-1))); do
 #SBATCH --partition=cpu_short
 
 source ~/.bashrc
-source activate /gpfs/scratch/gs4342/conda_envs/llava2
-export PYTHONPATH="/gpfs/scratch/gs4342/llava_headct:\$PYTHONPATH"
-cd /gpfs/scratch/gs4342/llava_headct
+source activate /gpfs/scratch/$USER/conda_envs/llava2
+export PYTHONPATH="/gpfs/scratch/$USER/llava_headct:\$PYTHONPATH"
+cd /gpfs/scratch/$USER/llava_headct
 
 echo "Processing validation set chunk ${chunk_id}/${NUM_VAL_CHUNKS}..."
 python src/preprocessing/cache_preprocessed_images_chunked.py \\
@@ -99,9 +99,9 @@ for chunk_id in $(seq 0 $((NUM_TEST_CHUNKS-1))); do
 #SBATCH --partition=cpu_short
 
 source ~/.bashrc
-source activate /gpfs/scratch/gs4342/conda_envs/llava2
-export PYTHONPATH="/gpfs/scratch/gs4342/llava_headct:\$PYTHONPATH"
-cd /gpfs/scratch/gs4342/llava_headct
+source activate /gpfs/scratch/$USER/conda_envs/llava2
+export PYTHONPATH="/gpfs/scratch/$USER/llava_headct:\$PYTHONPATH"
+cd /gpfs/scratch/$USER/llava_headct
 
 echo "Processing test set chunk ${chunk_id}/${NUM_TEST_CHUNKS}..."
 python src/preprocessing/cache_preprocessed_images_chunked.py \\
