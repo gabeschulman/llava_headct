@@ -1,0 +1,24 @@
+2025-10-25 19:58:43,132 - INFO - CUDA available: False
+2025-10-25 19:58:43,165 - INFO - CUDA available: False
+2025-10-25 19:58:43,180 - INFO - CUDA available: False
+2025-10-25 19:58:43,195 - INFO - CUDA available: False
+2025-10-25 19:58:43,255 - INFO - GPU count: 0
+2025-10-25 19:58:43,255 - INFO - Using device: cpu
+2025-10-25 19:58:43,255 - INFO - Loading config from: /gpfs/scratch/gs4342/llava_headct/src/configs/pretrain_config.json
+2025-10-25 19:58:43,261 - INFO - GPU count: 0
+2025-10-25 19:58:43,262 - INFO - Using device: cpu
+2025-10-25 19:58:43,262 - INFO - Loading config from: /gpfs/scratch/gs4342/llava_headct/src/configs/pretrain_config.json
+2025-10-25 19:58:43,268 - INFO - GPU count: 0
+2025-10-25 19:58:43,268 - INFO - Using device: cpu
+2025-10-25 19:58:43,268 - INFO - Loading config from: /gpfs/scratch/gs4342/llava_headct/src/configs/pretrain_config.json
+2025-10-25 19:58:43,274 - INFO - GPU count: 0
+2025-10-25 19:58:43,274 - INFO - Using device: cpu
+2025-10-25 19:58:43,275 - INFO - Loading config from: /gpfs/scratch/gs4342/llava_headct/src/configs/pretrain_config.json
+2025-10-25 19:58:43,275 - INFO - Loaded config: {'decoder': {'model_name': 'Qwen/Qwen3-8B'}, 'projector': {'input_channels': 512, 'inner_channels': 2048, 'out_channels': 4096}, 'vision_encoder': {'vision_encoder_weights': '/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth'}, 'dataset': {'datapath': '/gpfs/scratch/gs4342/ct_datasets_backup/nyu/', 'image_files': {'test': 'nyu_test_label.csv', 'train': 'nyu_train_label.csv', 'val': 'nyu_val_label.csv'}, 'radiology_report': '/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv', 'processed_files': {'test': 'nyu_test_processed.parquet', 'train': 'nyu_train_processed.parquet', 'val': 'nyu_val_processed.parquet'}}, 'training': {'batch_size': 64, 'num_workers': 16, 'max_epochs': 200, 'base_lr': 5e-05, 'projector_dropout': 0.1, 'weight_decay': 0.04}}
+2025-10-25 19:58:43,275 - INFO - Initializing model...
+2025-10-25 19:58:43,276 - INFO - Loaded config: {'decoder': {'model_name': 'Qwen/Qwen3-8B'}, 'projector': {'input_channels': 512, 'inner_channels': 2048, 'out_channels': 4096}, 'vision_encoder': {'vision_encoder_weights': '/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth'}, 'dataset': {'datapath': '/gpfs/scratch/gs4342/ct_datasets_backup/nyu/', 'image_files': {'test': 'nyu_test_label.csv', 'train': 'nyu_train_label.csv', 'val': 'nyu_val_label.csv'}, 'radiology_report': '/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv', 'processed_files': {'test': 'nyu_test_processed.parquet', 'train': 'nyu_train_processed.parquet', 'val': 'nyu_val_processed.parquet'}}, 'training': {'batch_size': 64, 'num_workers': 16, 'max_epochs': 200, 'base_lr': 5e-05, 'projector_dropout': 0.1, 'weight_decay': 0.04}}
+2025-10-25 19:58:43,276 - INFO - Initializing model...
+2025-10-25 19:58:43,277 - INFO - Loaded config: {'decoder': {'model_name': 'Qwen/Qwen3-8B'}, 'projector': {'input_channels': 512, 'inner_channels': 2048, 'out_channels': 4096}, 'vision_encoder': {'vision_encoder_weights': '/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth'}, 'dataset': {'datapath': '/gpfs/scratch/gs4342/ct_datasets_backup/nyu/', 'image_files': {'test': 'nyu_test_label.csv', 'train': 'nyu_train_label.csv', 'val': 'nyu_val_label.csv'}, 'radiology_report': '/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv', 'processed_files': {'test': 'nyu_test_processed.parquet', 'train': 'nyu_train_processed.parquet', 'val': 'nyu_val_processed.parquet'}}, 'training': {'batch_size': 64, 'num_workers': 16, 'max_epochs': 200, 'base_lr': 5e-05, 'projector_dropout': 0.1, 'weight_decay': 0.04}}
+2025-10-25 19:58:43,277 - INFO - Initializing model...
+2025-10-25 19:58:43,277 - INFO - Loaded config: {'decoder': {'model_name': 'Qwen/Qwen3-8B'}, 'projector': {'input_channels': 512, 'inner_channels': 2048, 'out_channels': 4096}, 'vision_encoder': {'vision_encoder_weights': '/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth'}, 'dataset': {'datapath': '/gpfs/scratch/gs4342/ct_datasets_backup/nyu/', 'image_files': {'test': 'nyu_test_label.csv', 'train': 'nyu_train_label.csv', 'val': 'nyu_val_label.csv'}, 'radiology_report': '/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv', 'processed_files': {'test': 'nyu_test_processed.parquet', 'train': 'nyu_train_processed.parquet', 'val': 'nyu_val_processed.parquet'}}, 'training': {'batch_size': 64, 'num_workers': 16, 'max_epochs': 200, 'base_lr': 5e-05, 'projector_dropout': 0.1, 'weight_decay': 0.04}}
+2025-10-25 19:58:43,289 - INFO - Initializing model...

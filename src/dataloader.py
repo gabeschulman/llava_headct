@@ -166,7 +166,7 @@ def create_condition_classification_dataloader(
         num_workers=num_workers,
         pin_memory=pin_memory,
         shuffle=shuffle,
-        collate_fn=None,  # Use default collate function
+        collate_fn=None,
     )
 
     return dataloader

@@ -28,7 +28,7 @@ class Encoder(ViT):
 
 
 class Projector(nn.Module):
-    def __init__(self, input_channels, inner_channels, out_channels):
+    def __init__(self, input_channels, inner_channels, out_channels, dropout=0.0):
         super().__init__()
         self.pre_norm = nn.LayerNorm(input_channels)
 
@@ -37,10 +37,11 @@ class Projector(nn.Module):
             nn.GELU(),
             nn.Linear(inner_channels, out_channels),
         )
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         x = self.pre_norm(x)
-        return self.proj(x)
+        return self.dropout(self.proj(x))
 
 
 class Decoder(nn.Module):

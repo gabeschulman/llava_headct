@@ -9,20 +9,23 @@ class LLaVAHeadCT(nn.Module):
     def __init__(
         self,
         vision_encoder_weights: str,
-        vision_encoder_kwargs: dict,
         projector_input_channels: int,
         projector_inner_channels: int,
         projector_out_channels: int,
         decoder_model_name: str,
+        projector_dropout: float = 0.0,
+        learning_rate: float = 1e-4,
+        weight_decay: float = 0.01,
     ):
         super().__init__()
         self.encoder = Encoder(
-            weights_path=vision_encoder_weights, **vision_encoder_kwargs
+            weights_path=vision_encoder_weights,
         )
         self.projector = Projector(
             input_channels=projector_input_channels,
             inner_channels=projector_inner_channels,
             out_channels=projector_out_channels,
+            dropout=projector_dropout,
         )
         self.decoder = Decoder(model_name=decoder_model_name)
 
