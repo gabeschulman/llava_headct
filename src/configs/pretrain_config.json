@@ -27,11 +27,11 @@
             "train": "nyu_train_processed.parquet",
             "val": "nyu_val_processed.parquet"
         },
-        "cached_images_dir": "/gpfs/scratch/gs4342/ct_datasets_backup/nyu/cached_images",
+        "cached_images_dir": "/gpfs/data/razavianlab/data/capstone_f25/cached_images",
         "cached_files": {
-            "test": "test/nyu_test_cached.parquet",
-            "train": "train/nyu_train_cached.parquet",
-            "val": "val/nyu_val_cached.parquet"
+            "test": "test/nyu_test_processed_cached.parquet",
+            "train": "train/nyu_train_processed_cached.parquet",
+            "val": "val/nyu_val_processed_cached.parquet"
         }
     },
     "training": {
