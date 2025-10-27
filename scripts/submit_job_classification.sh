@@ -22,6 +22,7 @@ source activate /gpfs/scratch/$USER/conda_envs/llava2
 # debugging flags (optional)
 export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Change to repo directory
 cd /gpfs/scratch/$USER/llava_headct

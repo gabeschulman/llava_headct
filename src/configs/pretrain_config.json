@@ -35,7 +35,8 @@
         }
     },
     "training": {
-        "batch_size": 32,
+        "batch_size": 4,
+        "gradient_accumulation_steps": 8,
         "num_workers": 8,
         "max_epochs": 200,
         "base_lr": 5e-5,

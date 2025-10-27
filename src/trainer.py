@@ -83,6 +83,9 @@ def main():
         config["dataset"]["cached_files"]["train"],
     )
     batch_size = config["training"]["batch_size"]
+    gradient_accumulation_steps = config["training"].get(
+        "gradient_accumulation_steps", 1
+    )
     num_workers = config["training"].get("num_workers", 4)
     train_dataloader = create_condition_classification_dataloader(
         train_file,
@@ -96,6 +99,8 @@ def main():
     )
     logger.info(f"Train dataset size: {len(train_dataloader.dataset)}")
     logger.info(f"Batch size: {batch_size}")
+    logger.info(f"Gradient accumulation steps: {gradient_accumulation_steps}")
+    logger.info(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
     logger.info(f"Total train batches: {len(train_dataloader)}")
 
     logger.info("Setting up validation dataloader...")
@@ -163,17 +168,22 @@ def main():
                 loss = criterion(
                     shift_logits.view(-1, vocab_size), shift_labels.view(-1)
                 )
+                loss = loss / gradient_accumulation_steps
 
-            optimizer.zero_grad()
             if use_amp:
                 scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
             else:
                 loss.backward()
-                optimizer.step()
 
-            total_train_loss += loss.item()
+            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                if use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                optimizer.zero_grad()
+
+            total_train_loss += loss.item() * gradient_accumulation_steps
 
             if batch_idx % 10 == 0:
                 logger.info(
