@@ -16,6 +16,13 @@ echo "export PRE_COMMIT_HOME=/gpfs/scratch/\$USER/pre-commit_cache" >> ~/.bashrc
 source ~/.bashrc
 ```
 
+## Srun
+
+Make sure you run something like the below before attempting to setup your conda environment or run data processing scripts:
+```bash
+srun --pty --mem=64G --time=4:00:00 bash
+```
+
 ## Environment Setup
 ```bash
 bash scripts/setup_env.sh
