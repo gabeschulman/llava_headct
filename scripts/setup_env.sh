@@ -16,7 +16,17 @@ echo ""
 mkdir -p "/gpfs/scratch/$USER/conda_envs"
 
 # Create the environment
+echo "Creating conda environment (this may take a while)..."
 conda env create -f "$ENV_YML" -p "$CONDA_ENV_PATH"
+
+echo ""
+echo "Activating environment to install PyTorch with CUDA support..."
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "$CONDA_ENV_PATH"
+
+echo ""
+echo "Installing PyTorch with CUDA 11.8 support..."
+pip install --upgrade torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu118
 
 echo ""
 echo "Environment created successfully!"
