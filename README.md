@@ -32,7 +32,7 @@ pre-commit install
 
 To submit jobs run (e.g.)
 ```bash
-sbatch scripts/submit_job_classsification.sh
+sbatch scripts/submit_job_classification.sh
 ```
 
 ^This prints the job ID from SLURM. To monitor the job, run:
