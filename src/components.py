@@ -66,3 +66,19 @@ class Decoder(nn.Module):
         return self.model(
             inputs_embeds=input_embeds, attention_mask=attention_mask, **kwargs
         )
+
+    def generate(self, input_embeds, attention_mask=None, **generate_kwargs):
+        """
+        Generate text for inference.
+
+        Args:
+            input_embeds: Input embeddings
+            attention_mask: Attention mask
+            **generate_kwargs: Additional arguments for generation (max_new_tokens, temperature, etc.)
+
+        Returns:
+            Generated token IDs
+        """
+        return self.model.generate(
+            inputs_embeds=input_embeds, attention_mask=attention_mask, **generate_kwargs
+        )

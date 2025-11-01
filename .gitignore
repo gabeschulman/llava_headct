@@ -40,3 +40,6 @@ tmp.*
 # Checkpoints
 *.pth
 *.ckpt
+
+# Conda
+condaenv.*.txt

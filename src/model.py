@@ -86,3 +86,71 @@ class LLaVAHeadCT(nn.Module):
             input_embeds=combined_embeds, attention_mask=combined_attention_mask
         )
         return outputs
+
+    def generate(
+        self,
+        image,
+        prompt: Optional[str] = None,
+        max_new_tokens: int = 512,
+        temperature: float = 0.7,
+        top_p: float = 0.9,
+        do_sample: bool = True,
+        **generate_kwargs,
+    ):
+        """
+        Generate text autoregressively for inference.
+
+        Args:
+            image: Input image tensor
+            prompt: Optional text prompt
+            max_new_tokens: Maximum number of tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            do_sample: Whether to use sampling (vs greedy)
+            **generate_kwargs: Additional generation arguments
+
+        Returns:
+            Generated token IDs
+        """
+        image_features, _ = self.encoder(image)
+        batch_size, num_tokens, feature_dim = image_features.shape
+        image_features_flat = image_features.view(-1, feature_dim)
+        projected_features_flat = self.projector(image_features_flat)
+        projected_image_features = projected_features_flat.view(
+            batch_size, num_tokens, -1
+        )
+
+        if prompt is not None:
+            text_tokens = self.decoder.tokenizer(
+                prompt, return_tensors="pt", padding=True, truncation=True
+            )
+            text_input_ids = text_tokens["input_ids"].to(image.device)
+            text_attention_mask = text_tokens["attention_mask"].to(image.device)
+            text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
+
+            combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
+            img_mask = torch.ones(
+                projected_image_features.shape[:2],
+                device=image.device,
+                dtype=text_attention_mask.dtype,
+            )
+            combined_attention_mask = torch.cat([img_mask, text_attention_mask], dim=1)
+        else:
+            combined_embeds = projected_image_features
+            combined_attention_mask = torch.ones(
+                combined_embeds.shape[:2], device=image.device
+            )
+
+        generated_ids = self.decoder.generate(
+            input_embeds=combined_embeds,
+            attention_mask=combined_attention_mask,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=do_sample,
+            pad_token_id=self.decoder.tokenizer.pad_token_id,
+            eos_token_id=self.decoder.tokenizer.eos_token_id,
+            **generate_kwargs,
+        )
+
+        return generated_ids

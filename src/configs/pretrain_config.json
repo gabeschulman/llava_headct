@@ -1,47 +1,43 @@
 {
     "decoder": {
-        "model_name": "Qwen/Qwen3-1.7B"
+        "decoder_model_name": "Qwen/Qwen2.5-0.5B"
     },
     "projector": {
-        "input_channels": 768,
-        "inner_channels": 1024,
-        "out_channels": 2048
+        "projector_input_channels": 768,
+        "projector_inner_channels": 832,
+        "projector_out_channels": 896,
+        "projector_dropout": 0.1
     },
-    "vision_encoder": {
+    "encoder": {
         "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",
         "vision_encoder_in_chans": 3,
         "vision_encoder_img_size": 96,
-        "vision_encoder_patch_size": 12,
+        "vision_encoder_patch_size": 12
+    },
+    "encoder_output": {
         "num_image_tokens": 513
     },
     "dataset": {
-        "datapath": "/gpfs/data/razavianlab/data/capstone_f25/flat_files",
-        "image_files": {
-            "test": "nyu_test_label.csv",
-            "train": "nyu_train_label.csv",
-            "val": "nyu_val_label.csv"
-        },
-        "radiology_report": "/gpfs/data/razavianlab/capstone/2025_stroke/ct_accession_report_2506_deid.csv",
-        "processed_files": {
-            "test": "nyu_test_processed.parquet",
-            "train": "nyu_train_processed.parquet",
-            "val": "nyu_val_processed.parquet"
-        },
-        "cached_images_dir": "/gpfs/data/razavianlab/data/capstone_f25/cached_images",
-        "cached_files": {
+        "filepath": "/gpfs/scratch/gs4342/data/cached_images",
+        "filenames": {
             "test": "test/nyu_test_processed_cached.parquet",
             "train": "train/nyu_train_processed_cached.parquet",
             "val": "val/nyu_val_processed_cached.parquet"
         }
     },
     "training": {
-        "batch_size": 4,
-        "gradient_accumulation_steps": 8,
-        "num_workers": 8,
+        "gradient_accumulation_steps": 2,
         "max_epochs": 200,
         "base_lr": 5e-5,
-        "projector_dropout": 0.1,
         "weight_decay": 0.04,
         "use_amp": true
+    },
+    "dataloader": {
+        "batch_size": 16,
+        "num_workers": 8,
+        "max_text_length": 512,
+        "roi": [-1000, 400],
+        "window_sizes": [[80, 80], [120, 120], [160, 160]],
+        "use_cached_images": true
     }
 }

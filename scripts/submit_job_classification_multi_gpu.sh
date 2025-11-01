@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=llava_head_ct_pretrain
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=32
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100:4
 #SBATCH --time=24:00:00
-#SBATCH --mem=64G
+#SBATCH --mem=256G
 #SBATCH --partition=a100_long
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
@@ -34,6 +34,8 @@ echo "Node: $SLURM_NODELIST"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-python src/trainer.py --config_name pretrain_config --objective condition_classification
+# Launch with torchrun for distributed training
+torchrun --nnodes 1 --nproc_per_node 4 --master_port 12400 \
+    src/trainer.py --config_name pretrain_config --objective condition_classification
 
 echo "Job completed at: $(date)"

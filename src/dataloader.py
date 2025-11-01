@@ -2,15 +2,16 @@ import polars as pl
 import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from monai import transforms
 from typing import List, Tuple, Optional
 from src.fm_ct.data.transforms import MultipleWindowScaleStack
 from transformers import AutoTokenizer
 
 
-class ConditionClassificationDataset(Dataset):
+class HeadCTDataset(Dataset):
     """
-    Dataset class for Head CT condition classification using pre-trained ViT models.
+    Dataset class for Head CT objectives using pre-trained ViT models.
 
     This dataset handles:
     - Loading NIfTI files
@@ -22,7 +23,8 @@ class ConditionClassificationDataset(Dataset):
     def __init__(
         self,
         image_file_location: str,
-        use_cached_images: bool = False,
+        objective_column: str,
+        use_cached_images: bool = True,
         tokenizer_model_name: Optional[str] = None,
         max_text_length: int = 512,
         roi: Tuple[int, int, int] = (96, 96, 96),
@@ -50,7 +52,7 @@ class ConditionClassificationDataset(Dataset):
 
         image_path_col: str = "img_path" if not use_cached_images else "cached_path"
         self.image_paths: List[str] = self.image_df[image_path_col].to_list()
-        self.conditions: List[str] = self.image_df["conditions"].to_list()
+        self.objective_text: List[str] = self.image_df[objective_column].to_list()
 
         self.roi: Tuple[int, int, int] = roi
         self.window_sizes: List[Tuple[int, int]] = window_sizes
@@ -63,8 +65,8 @@ class ConditionClassificationDataset(Dataset):
 
         # Create the data list in MONAI format
         self.data: List[dict] = [
-            {"image_item": {"image": path}, "condition": cond}
-            for path, cond in zip(self.image_paths, self.conditions)
+            {"image_item": {"image": path}, "objective": obj}
+            for path, obj in zip(self.image_paths, self.objective_text)
         ]
 
         # Initialize transforms - only needed if not using cached images (preferred)
@@ -148,12 +150,12 @@ class ConditionClassificationDataset(Dataset):
 
         result = {
             "image": image_tensor,
-            "condition": sample_data["condition"],
+            "objective": sample_data["objective"],
         }
 
         if self.tokenizer:
             tokenized = self.tokenizer(
-                sample_data["condition"],
+                sample_data["objective"],
                 return_tensors="pt",
                 padding="max_length",
                 truncation=True,
@@ -165,13 +167,16 @@ class ConditionClassificationDataset(Dataset):
         return result
 
 
-def create_condition_classification_dataloader(
+def create_head_ct_dataloader(
     image_file_location: str,
+    objective_column: str,
     batch_size: int = 4,
     num_workers: int = 1,
     pin_memory: bool = True,
     shuffle: bool = False,
-    use_cached_images: bool = False,
+    use_cached_images: bool = True,
+    rank: int = 0,
+    world_size: int = 1,
     tokenizer_model_name: Optional[str] = None,
     max_text_length: int = 512,
     roi: Tuple[int, int, int] = (96, 96, 96),
@@ -184,6 +189,7 @@ def create_condition_classification_dataloader(
 
     Args:
         image_file_location: Path to parquet file with image paths
+        objective_column: Column name for the objective text
         batch_size: Batch size for the DataLoader
         num_workers: Number of worker processes for data loading
         pin_memory: Whether to pin memory for faster GPU transfer
@@ -197,22 +203,34 @@ def create_condition_classification_dataloader(
     Returns:
         DataLoader configured for feature extraction
     """
-    dataset = ConditionClassificationDataset(
+    dataset = HeadCTDataset(
         image_file_location=image_file_location,
+        objective_column=objective_column,
+        use_cached_images=use_cached_images,
         tokenizer_model_name=tokenizer_model_name,
         max_text_length=max_text_length,
         roi=roi,
         window_sizes=window_sizes,
-        use_cached_images=use_cached_images,
         **dataset_kwargs,
     )
+
+    sampler = None
+    if world_size > 1:
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=shuffle,
+        )
+        shuffle = False  # Don't use shuffle when using sampler
 
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        shuffle=shuffle,
+        sampler=sampler,
+        shuffle=shuffle if sampler is None else False,
         persistent_workers=persistent_workers,
         collate_fn=None,
     )
