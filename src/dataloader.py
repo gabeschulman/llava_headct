@@ -157,7 +157,7 @@ class HeadCTDataset(Dataset):
             tokenized = self.tokenizer(
                 sample_data["objective"],
                 return_tensors="pt",
-                padding="max_length",
+                padding=False,
                 truncation=True,
                 max_length=self.max_text_length,
             )
@@ -165,6 +165,41 @@ class HeadCTDataset(Dataset):
             result["attention_mask"] = tokenized["attention_mask"].squeeze(0)
 
         return result
+
+
+def collate_fn_dynamic_padding(batch):
+    """
+    Custom collate function that pads sequences dynamically to the longest in the batch.
+    """
+    images = torch.stack([item["image"] for item in batch])
+    objectives = [item["objective"] for item in batch]
+
+    # Pad input_ids and attention_mask to the longest sequence in batch
+    input_ids = [item["input_ids"] for item in batch]
+    attention_masks = [item["attention_mask"] for item in batch]
+
+    # Get max length in this batch
+    max_len = max(len(ids) for ids in input_ids)
+
+    # Pad sequences
+    padded_input_ids = []
+    padded_attention_masks = []
+
+    for ids, mask in zip(input_ids, attention_masks):
+        padding_length = max_len - len(ids)
+        padded_input_ids.append(
+            torch.cat([ids, torch.zeros(padding_length, dtype=ids.dtype)])
+        )
+        padded_attention_masks.append(
+            torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
+        )
+
+    return {
+        "image": images,
+        "objective": objectives,
+        "input_ids": torch.stack(padded_input_ids),
+        "attention_mask": torch.stack(padded_attention_masks),
+    }
 
 
 def create_head_ct_dataloader(
@@ -222,7 +257,7 @@ def create_head_ct_dataloader(
             rank=rank,
             shuffle=shuffle,
         )
-        shuffle = False  # Don't use shuffle when using sampler
+        shuffle = False
 
     dataloader = DataLoader(
         dataset=dataset,
@@ -232,7 +267,7 @@ def create_head_ct_dataloader(
         sampler=sampler,
         shuffle=shuffle if sampler is None else False,
         persistent_workers=persistent_workers,
-        collate_fn=None,
+        collate_fn=collate_fn_dynamic_padding,
     )
 
     return dataloader

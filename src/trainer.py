@@ -35,15 +35,10 @@ def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_le
     Returns:
         loss: Computed loss value
     """
-    # outputs.logits shape: [batch, num_image_tokens + prompt_length + (target_length - 1), vocab]
-    # Skip image tokens to get text logits
-    text_logits = outputs.logits[:, num_image_tokens:, :].contiguous()
-    # text_logits shape: [batch, prompt_length + (target_length - 1), vocab]
-
-    # Skip prompt tokens - we only want logits that predict target tokens
-    # The last logit at position (prompt_length - 1) predicts target[0]
-    # So we take logits from (prompt_length - 1) to (prompt_length + target_length - 2)
-    logits_for_targets = text_logits[:, prompt_length - 1 : -1, :].contiguous()
+    # Skip image and prompt tokens to get only target prediction logits
+    logits_for_targets = outputs.logits[
+        :, num_image_tokens + prompt_length - 1 : -1, :
+    ].contiguous()
     # logits_for_targets shape: [batch, target_length - 1, vocab]
 
     # Shift target labels (predict next token)
@@ -51,7 +46,12 @@ def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_le
     # labels shape: [batch, target_length - 1]
 
     vocab_size = logits_for_targets.size(-1)
+
+    # Reshape and compute loss (this creates the large tensor)
     loss = criterion(logits_for_targets.view(-1, vocab_size), labels.view(-1))
+
+    # Immediately free memory
+    del logits_for_targets, labels
 
     return loss
 
@@ -68,9 +68,6 @@ def validate(
         for batch in dataloader:
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
-            target_attention_mask = batch["attention_mask"].to(
-                device, non_blocking=True
-            )
 
             current_batch_size = images.shape[0]
             prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
@@ -78,9 +75,9 @@ def validate(
             prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
-            # target_attention_mask = torch.ones_like(
-            #     target_ids[:, :-1], device=target_ids.device
-            # )
+            target_attention_mask = torch.ones_like(
+                target_ids[:, :-1], device=target_ids.device
+            )
             full_attention_mask = torch.cat(
                 [prompt_attention_batch, target_attention_mask], dim=1
             )
@@ -127,12 +124,19 @@ def main(objective: str, config_name: str):
     )
 
     logger.info("Initializing model...")
-    model = LLaVAHeadCT(
+    model: LLaVAHeadCT | torch.nn.parallel.DistributedDataParallel = LLaVAHeadCT(
         **model_config.encoder_config,
         **model_config.projector_config,
         **model_config.decoder_config,
     )
     model.to(device)
+
+    # Wrap model in DistributedDataParallel for multi-GPU training
+    if world_size > 1:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[rank], output_device=rank, find_unused_parameters=False
+        )
+        logger.info(f"Model wrapped in DDP for rank {rank}")
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -176,8 +180,11 @@ def main(objective: str, config_name: str):
     best_val_loss = float("inf")
     best_epoch = 0
 
+    # Get unwrapped model for tokenizer access
+    model_unwrapped = model.module if world_size > 1 else model
     prompt_tokens: tuple = data_loader_handler.get_objective_prompt_tokens(
-        model, device
+        model_unwrapped,  # type: ignore
+        device,
     )
     prompt_input_ids: torch.Tensor = prompt_tokens[0]
     prompt_attention_mask: torch.Tensor = prompt_tokens[1]
@@ -287,11 +294,13 @@ def main(objective: str, config_name: str):
             if is_main_process():
                 best_model_path = f"checkpoints/{objective}/best_model.pth"
                 Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
+                # Unwrap DDP model for saving
+                model_to_save = model.module if world_size > 1 else model
                 torch.save(
                     {
                         "epoch": epoch,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
+                        "model_state_dict": model_to_save.state_dict(),  # type: ignore
+                        "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
                         "train_loss": avg_train_loss,
                         "val_loss": val_loss,
                     },
@@ -301,11 +310,12 @@ def main(objective: str, config_name: str):
 
         if is_main_process():
             epoch_checkpoint_path = f"checkpoints/{objective}/epoch_{epoch+1}.pth"
+            model_to_save = model.module if world_size > 1 else model
             torch.save(
                 {
                     "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
+                    "model_state_dict": model_to_save.state_dict(),  # type: ignore
+                    "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
                     "train_loss": avg_train_loss,
                     "val_loss": val_loss,
                 },
@@ -323,7 +333,8 @@ def main(objective: str, config_name: str):
         logger.info("Loading best model checkpoint...")
 
     best_checkpoint = torch.load(f"checkpoints/{objective}/best_model.pth")
-    model.load_state_dict(best_checkpoint["model_state_dict"])
+    model_unwrapped = model.module if world_size > 1 else model
+    model_unwrapped.load_state_dict(best_checkpoint["model_state_dict"])  # type: ignore
 
     if is_main_process():
         logger.info("Setting up test dataloader...")

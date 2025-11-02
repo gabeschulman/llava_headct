@@ -26,16 +26,16 @@
         }
     },
     "training": {
-        "gradient_accumulation_steps": 2,
+        "gradient_accumulation_steps": 4,
         "max_epochs": 200,
         "base_lr": 5e-5,
         "weight_decay": 0.04,
         "use_amp": true
     },
     "dataloader": {
-        "batch_size": 16,
+        "batch_size": 4,
         "num_workers": 8,
-        "max_text_length": 512,
+        "max_text_length": 256,
         "roi": [-1000, 400],
         "window_sizes": [[80, 80], [120, 120], [160, 160]],
         "use_cached_images": true

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 import torch
 from torch.utils.data import DataLoader
 
@@ -176,7 +176,7 @@ class DataLoaderHandler:
     rank: int = 0
     world_size: int = 1
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.supported_objectives: dict[str, str] = {
             "condition_classification": "conditions",
         }
@@ -214,12 +214,14 @@ class DataLoaderHandler:
         )
 
     def get_objective_prompt_tokens(
-        self, model: LLaVAHeadCT, device: torch.device
+        self,
+        model: Union[LLaVAHeadCT, torch.nn.parallel.DistributedDataParallel],
+        device: torch.device,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         prompt_templates: dict[str, str] = {
             "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
         }
-        text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(
+        text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(  # type: ignore
             prompt_templates[self.objective],
             return_tensors="pt",
             padding=True,
