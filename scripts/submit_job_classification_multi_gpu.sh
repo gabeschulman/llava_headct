@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=llava_head_ct_pretrain
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=32
-#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:a100:4
-#SBATCH --time=24:00:00
-#SBATCH --mem=256G
-#SBATCH --partition=a100_long
+#SBATCH --time=12:00:00
+#SBATCH --mem=128G
+#SBATCH --partition=a100_short
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 
