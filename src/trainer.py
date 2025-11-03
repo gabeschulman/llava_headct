@@ -166,11 +166,11 @@ def main(objective: str, config_name: str):
     use_amp = model_config.train_config.get("use_amp", True)
 
     criterion = nn.CrossEntropyLoss(ignore_index=-100)
-    num_epochs = model_config.train_config.get("num_epochs", 10)
+    num_epochs = model_config.train_config["num_epochs"]
 
     logger.info(f"Training for {num_epochs} epochs")
-    logger.info(f"Learning rate: {model_config.train_config.get('base_lr', 1e-4)}")
-    logger.info(f"Weight decay: {model_config.train_config.get('weight_decay', 0.04)}")
+    logger.info(f"Learning rate: {model_config.train_config['base_lr']}")
+    logger.info(f"Weight decay: {model_config.train_config['weight_decay']}")
     logger.info(f"Mixed precision (AMP): {use_amp}")
 
     best_val_loss = float("inf")

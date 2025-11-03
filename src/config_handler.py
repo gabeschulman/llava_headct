@@ -123,9 +123,9 @@ class ModelConfig:
         )
 
     def load_train_config(self) -> Dict[str, Any]:
-        if "train" not in self.config:
+        if "training" not in self.config:
             return {}
-        train_config: Dict[str, Any] = self.config["train"]
+        train_config: Dict[str, Any] = self.config["training"]
         return train_config
 
     def update_train_config(self) -> None:
@@ -134,7 +134,7 @@ class ModelConfig:
             "num_epochs": 6,
             "gradient_accumulation_steps": 2,
             "max_epochs": 200,
-            "learning_rate": 5e-5,
+            "base_lr": 5e-5,
             "weight_decay": 0.04,
             "use_amp": True,
         }
