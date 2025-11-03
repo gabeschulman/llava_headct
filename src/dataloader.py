@@ -171,17 +171,21 @@ def collate_fn_dynamic_padding(batch):
     """
     Custom collate function that pads sequences dynamically to the longest in the batch.
     """
+    if len(batch) > 0:
+        expected_shape = batch[0]["image"].shape
+        batch = [item for item in batch if item["image"].shape == expected_shape]
+
+    if len(batch) == 0:
+        return None
+
     images = torch.stack([item["image"] for item in batch])
     objectives = [item["objective"] for item in batch]
 
-    # Pad input_ids and attention_mask to the longest sequence in batch
     input_ids = [item["input_ids"] for item in batch]
     attention_masks = [item["attention_mask"] for item in batch]
 
-    # Get max length in this batch
     max_len = max(len(ids) for ids in input_ids)
 
-    # Pad sequences
     padded_input_ids = []
     padded_attention_masks = []
 

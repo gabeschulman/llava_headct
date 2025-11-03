@@ -66,6 +66,9 @@ def validate(
 
     with torch.no_grad():
         for batch in dataloader:
+            if batch is None:
+                continue
+
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
@@ -199,6 +202,9 @@ def main(objective: str, config_name: str):
         logger.info(f"Starting epoch {epoch+1}/{num_epochs}")
 
         for batch_idx, batch in enumerate(train_dataloader):
+            if batch is None:
+                continue
+
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
