@@ -35,22 +35,15 @@ def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_le
     Returns:
         loss: Computed loss value
     """
-    # Skip image and prompt tokens to get only target prediction logits
     logits_for_targets = outputs.logits[
         :, num_image_tokens + prompt_length - 1 : -1, :
     ].contiguous()
-    # logits_for_targets shape: [batch, target_length - 1, vocab]
-
-    # Shift target labels (predict next token)
     labels = target_ids[:, 1:].contiguous()
-    # labels shape: [batch, target_length - 1]
 
     vocab_size = logits_for_targets.size(-1)
 
-    # Reshape and compute loss (this creates the large tensor)
     loss = criterion(logits_for_targets.view(-1, vocab_size), labels.view(-1))
 
-    # Immediately free memory
     del logits_for_targets, labels
 
     return loss
