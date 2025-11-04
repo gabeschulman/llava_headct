@@ -29,6 +29,7 @@ class ModelConfig:
         self.update_train_config()
         self.dataloader_config = self.load_dataloader_config()
         self.update_dataloader_config()
+        self.model_state_dict_path = self.load_model_state_dict_path()
 
     def load_config(self) -> None:
         """Load configuration from the JSON file."""
@@ -160,6 +161,10 @@ class ModelConfig:
         for key, default_value in default_value_map.items():
             self.dataloader_config.setdefault(key, default_value)
 
+    def load_model_state_dict_path(self) -> Union[str, None]:
+        config_path: Union[str, None] = self.config.get("model_state_dict_path", None)
+        return config_path
+
     def __str__(self):
         return json.dumps(self.config, indent=4)
 
@@ -179,6 +184,8 @@ class DataLoaderHandler:
     def __post_init__(self) -> None:
         self.supported_objectives: dict[str, str] = {
             "condition_classification": "conditions",
+            "impression_generation": "impression_deid",
+            "narrative_generation": "narrative_deid",
         }
         if self.objective not in self.supported_objectives.keys():
             raise ValueError(f"Unsupported objective: {self.objective}")
@@ -220,6 +227,8 @@ class DataLoaderHandler:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         prompt_templates: dict[str, str] = {
             "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
+            "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
+            "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
         }
         text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(  # type: ignore
             prompt_templates[self.objective],

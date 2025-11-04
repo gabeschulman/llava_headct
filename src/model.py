@@ -19,6 +19,7 @@ class LLaVAHeadCT(nn.Module):
         projector_dropout: float = 0.0,
         learning_rate: float = 1e-4,
         weight_decay: float = 0.01,
+        state_dict_path: Optional[str] = None,
     ):
         super().__init__()
         self.encoder = Encoder(
@@ -34,6 +35,23 @@ class LLaVAHeadCT(nn.Module):
             dropout=projector_dropout,
         )
         self.decoder = Decoder(model_name=decoder_model_name)
+
+        if state_dict_path is not None:
+            self.state_dict_path = state_dict_path
+            self.load_pretrained_weights(strict=False)
+
+    def load_pretrained_weights(self, strict: bool = True) -> None:
+        """Load weights from a checkpoint file."""
+        checkpoint = torch.load(self.state_dict_path, map_location="cpu")
+        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            state_dict = checkpoint["model_state_dict"]
+            print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
+            print(f"  Train loss: {checkpoint.get('train_loss', 'N/A'):.4f}")
+            print(f"  Val loss: {checkpoint.get('val_loss', 'N/A'):.4f}")
+        else:
+            state_dict = checkpoint
+
+        super().load_state_dict(state_dict, strict=strict)
 
     def forward(
         self,

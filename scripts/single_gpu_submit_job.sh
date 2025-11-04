@@ -4,9 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:a100:1
-#SBATCH --time=24:00:00
+#SBATCH --time=2:00:00
 #SBATCH --mem=64G
-#SBATCH --partition=a100_long
+#SBATCH --partition=a100_short
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 
@@ -34,6 +34,6 @@ echo "Node: $SLURM_NODELIST"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-python src/trainer.py --config_name pretrain_config --objective condition_classification
+python src/trainer.py --config_name narrative_train_config --objective narrative_generation
 
 echo "Job completed at: $(date)"

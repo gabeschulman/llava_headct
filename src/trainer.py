@@ -119,11 +119,18 @@ def main(objective: str, config_name: str):
         objective, model_config, rank=rank, world_size=world_size
     )
 
+    if model_config.model_state_dict_path:
+        if is_main_process():
+            logger.info(
+                f"Loading model state dict from: {model_config.model_state_dict_path}"
+            )
+
     logger.info("Initializing model...")
     model: LLaVAHeadCT | torch.nn.parallel.DistributedDataParallel = LLaVAHeadCT(
         **model_config.encoder_config,
         **model_config.projector_config,
         **model_config.decoder_config,
+        state_dict_path=model_config.model_state_dict_path,
     )
     model.to(device)
 
