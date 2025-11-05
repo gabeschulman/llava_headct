@@ -100,30 +100,30 @@ def validate(
 def main(objective: str, config_name: str):
     rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
+    main_process_flag = is_main_process()
 
     logger = setup_logging()
-    if is_main_process():
+    if main_process_flag:
         logger.info(f"CUDA available: {torch.cuda.is_available()}")
         logger.info(f"GPU count: {torch.cuda.device_count()}")
         if world_size > 1:
             logger.info(f"Distributed training: world_size={world_size}, rank={rank}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if is_main_process():
+    if main_process_flag:
         logger.info(f"Using device: {device}")
 
     model_config = ModelConfig(config_name)
-    if is_main_process():
+    if main_process_flag:
         logger.info(f"Loaded config: {model_config}")
     data_loader_handler = DataLoaderHandler(
         objective, model_config, rank=rank, world_size=world_size
     )
 
-    if model_config.model_state_dict_path:
-        if is_main_process():
-            logger.info(
-                f"Loading model state dict from: {model_config.model_state_dict_path}"
-            )
+    if model_config.model_state_dict_path and main_process_flag:
+        logger.info(
+            f"Loading model state dict from: {model_config.model_state_dict_path}"
+        )
 
     logger.info("Initializing model...")
     model: LLaVAHeadCT | torch.nn.parallel.DistributedDataParallel = LLaVAHeadCT(
@@ -183,7 +183,6 @@ def main(objective: str, config_name: str):
     best_val_loss = float("inf")
     best_epoch = 0
 
-    # Get unwrapped model for tokenizer access
     model_unwrapped = model.module if world_size > 1 else model
     prompt_tokens: tuple = data_loader_handler.get_objective_prompt_tokens(
         model_unwrapped,  # type: ignore
@@ -249,32 +248,30 @@ def main(objective: str, config_name: str):
 
             total_train_loss += loss.item() * gradient_accumulation_steps
 
-            if batch_idx % 10 == 0:
-                if is_main_process():
-                    logger.info(
-                        f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {loss.item():.4f}"
-                    )
+            if batch_idx % 10 == 0 and main_process_flag:
+                logger.info(
+                    f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {loss.item():.4f}"
+                )
 
-            if batch_idx % 1000 == 0 and batch_idx > 0:
-                if is_main_process():
-                    checkpoint_path = f"checkpoints/{objective}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
-                    Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
-                    torch.save(
-                        {
-                            "epoch": epoch,
-                            "batch_idx": batch_idx,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "loss": loss.item(),
-                        },
-                        checkpoint_path,
-                    )
-                    logger.info(f"Saved checkpoint: {checkpoint_path}")
+            if batch_idx % 1000 == 0 and batch_idx > 0 and main_process_flag:
+                checkpoint_path = f"checkpoints/{objective}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
+                Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "batch_idx": batch_idx,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "loss": loss.item(),
+                    },
+                    checkpoint_path,
+                )
+                logger.info(f"Saved checkpoint: {checkpoint_path}")
 
         avg_train_loss = total_train_loss / len(train_dataloader)
         epoch_time = datetime.now() - epoch_start_time
 
-        if is_main_process():
+        if main_process_flag:
             logger.info(f"Running validation for epoch {epoch+1}...")
         val_loss = validate(
             model,
@@ -286,7 +283,7 @@ def main(objective: str, config_name: str):
             use_amp,
         )
 
-        if is_main_process():
+        if main_process_flag:
             logger.info(
                 f"Epoch {epoch+1}/{num_epochs} completed - "
                 f"Train Loss: {avg_train_loss:.4f}, "
@@ -294,27 +291,26 @@ def main(objective: str, config_name: str):
                 f"Time: {epoch_time}"
             )
 
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss and main_process_flag:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            if is_main_process():
-                best_model_path = f"checkpoints/{objective}/best_model.pth"
-                Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
-                # Unwrap DDP model for saving
-                model_to_save = model.module if world_size > 1 else model
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": model_to_save.state_dict(),  # type: ignore
-                        "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
-                        "train_loss": avg_train_loss,
-                        "val_loss": val_loss,
-                    },
-                    best_model_path,
-                )
-                logger.info(f"New best model saved! Val Loss: {val_loss:.4f}")
+            best_model_path = f"checkpoints/{objective}/best_model.pth"
+            Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
+            # Unwrap DDP model for saving
+            model_to_save = model.module if world_size > 1 else model
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model_to_save.state_dict(),  # type: ignore
+                    "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
+                    "train_loss": avg_train_loss,
+                    "val_loss": val_loss,
+                },
+                best_model_path,
+            )
+            logger.info(f"New best model saved! Val Loss: {val_loss:.4f}")
 
-        if is_main_process():
+        if main_process_flag:
             epoch_checkpoint_path = f"checkpoints/{objective}/epoch_{epoch+1}.pth"
             model_to_save = model.module if world_size > 1 else model
             torch.save(
@@ -328,7 +324,7 @@ def main(objective: str, config_name: str):
                 epoch_checkpoint_path,
             )
 
-    if is_main_process():
+    if main_process_flag:
         logger.info(
             f"Training completed! Best validation loss: {best_val_loss:.4f} at epoch {best_epoch}"
         )
@@ -342,10 +338,10 @@ def main(objective: str, config_name: str):
     model_unwrapped = model.module if world_size > 1 else model
     model_unwrapped.load_state_dict(best_checkpoint["model_state_dict"])  # type: ignore
 
-    if is_main_process():
+    if main_process_flag:
         logger.info("Setting up test dataloader...")
     test_dataloader = data_loader_handler.get_test_dataloader()
-    if is_main_process():
+    if main_process_flag:
         logger.info(f"Total test batches: {len(test_dataloader)}")
 
     test_loss = validate(
@@ -358,7 +354,7 @@ def main(objective: str, config_name: str):
         use_amp,
     )
 
-    if is_main_process():
+    if main_process_flag:
         logger.info("=" * 80)
         logger.info("FINAL TEST SET RESULTS:")
         logger.info(f"  Test Loss: {test_loss:.4f}")

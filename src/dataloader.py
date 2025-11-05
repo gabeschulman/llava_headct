@@ -49,6 +49,10 @@ class HeadCTDataset(Dataset):
             allow_missing_keys: Whether to allow missing keys in transforms
         """
         self.image_df: pl.DataFrame = pl.read_parquet(image_file_location)
+        self.image_df = self.image_df.filter(
+            pl.col(objective_column).is_not_null()
+            & (pl.col(objective_column).str.len_chars() > 0)
+        )
 
         image_path_col: str = "img_path" if not use_cached_images else "cached_path"
         self.image_paths: List[str] = self.image_df[image_path_col].to_list()
@@ -148,14 +152,21 @@ class HeadCTDataset(Dataset):
             image_array = np.load(cached_path)
             image_tensor = torch.from_numpy(image_array)
 
+        objective_text = sample_data["objective"]
+
+        if objective_text is None or (
+            isinstance(objective_text, str) and len(objective_text.strip()) == 0
+        ):
+            objective_text = ""
+
         result = {
             "image": image_tensor,
-            "objective": sample_data["objective"],
+            "objective": objective_text,
         }
 
         if self.tokenizer:
             tokenized = self.tokenizer(
-                sample_data["objective"],
+                objective_text,
                 return_tensors="pt",
                 padding=False,
                 truncation=True,
@@ -170,10 +181,10 @@ class HeadCTDataset(Dataset):
 def collate_fn_dynamic_padding(batch):
     """
     Custom collate function that pads sequences dynamically to the longest in the batch.
+    Filters out images with incorrect shapes (e.g., 6 channels instead of 3).
     """
-    if len(batch) > 0:
-        expected_shape = batch[0]["image"].shape
-        batch = [item for item in batch if item["image"].shape == expected_shape]
+    expected_shape = (3, 96, 96, 96)
+    batch = [item for item in batch if item["image"].shape == expected_shape]
 
     if len(batch) == 0:
         return None
