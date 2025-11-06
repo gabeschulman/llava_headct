@@ -28,13 +28,16 @@ class LLaVAHeadCT(nn.Module):
             img_size=vision_encoder_img_size,
             patch_size=vision_encoder_patch_size,
         )
+
         self.projector = Projector(
             input_channels=projector_input_channels,
             inner_channels=projector_inner_channels,
             out_channels=projector_out_channels,
             dropout=projector_dropout,
         )
+
         self.decoder = Decoder(model_name=decoder_model_name)
+        
 
         if state_dict_path is not None:
             self.state_dict_path = state_dict_path
@@ -130,45 +133,51 @@ class LLaVAHeadCT(nn.Module):
         Returns:
             Generated token IDs
         """
-        image_features, _ = self.encoder(image)
-        batch_size, num_tokens, feature_dim = image_features.shape
-        image_features_flat = image_features.view(-1, feature_dim)
-        projected_features_flat = self.projector(image_features_flat)
-        projected_image_features = projected_features_flat.view(
-            batch_size, num_tokens, -1
-        )
 
-        if prompt is not None:
-            text_tokens = self.decoder.tokenizer(
-                prompt, return_tensors="pt", padding=True, truncation=True
-            )
-            text_input_ids = text_tokens["input_ids"].to(image.device)
-            text_attention_mask = text_tokens["attention_mask"].to(image.device)
-            text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
-
-            combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
-            img_mask = torch.ones(
-                projected_image_features.shape[:2],
-                device=image.device,
-                dtype=text_attention_mask.dtype,
-            )
-            combined_attention_mask = torch.cat([img_mask, text_attention_mask], dim=1)
-        else:
-            combined_embeds = projected_image_features
-            combined_attention_mask = torch.ones(
-                combined_embeds.shape[:2], device=image.device
+        self.eval()
+        with torch.no_grad():
+            image_features, _ = self.encoder(image)
+            batch_size, num_tokens, feature_dim = image_features.shape
+            image_features_flat = image_features.view(-1, feature_dim)
+            projected_features_flat = self.projector(image_features_flat)
+            projected_image_features = projected_features_flat.view(
+                batch_size, num_tokens, -1
             )
 
-        generated_ids = self.decoder.generate(
-            input_embeds=combined_embeds,
-            attention_mask=combined_attention_mask,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            do_sample=do_sample,
-            pad_token_id=self.decoder.tokenizer.pad_token_id,
-            eos_token_id=self.decoder.tokenizer.eos_token_id,
-            **generate_kwargs,
-        )
+            if prompt is not None:
+                if isinstance(prompt, str):
+                    prompt = [prompt] * image.shape[0]
+
+                text_tokens = self.decoder.tokenizer(
+                    prompt, return_tensors="pt", padding=True, truncation=True
+                )
+                text_input_ids = text_tokens["input_ids"].to(image.device)
+                text_attention_mask = text_tokens["attention_mask"].to(image.device)
+                text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
+
+                combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
+                img_mask = torch.ones(
+                    projected_image_features.shape[:2],
+                    device=image.device,
+                    dtype=text_attention_mask.dtype,
+                )
+                combined_attention_mask = torch.cat([img_mask, text_attention_mask], dim=1)
+            else:
+                combined_embeds = projected_image_features
+                combined_attention_mask = torch.ones(
+                    combined_embeds.shape[:2], device=image.device
+                )
+
+            generated_ids = self.decoder.generate(
+                input_embeds=combined_embeds,
+                attention_mask=combined_attention_mask,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+                pad_token_id=self.decoder.tokenizer.pad_token_id,
+                eos_token_id=self.decoder.tokenizer.eos_token_id,
+                **generate_kwargs,
+            )
 
         return generated_ids
