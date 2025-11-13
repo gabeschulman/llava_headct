@@ -16,7 +16,14 @@ def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
-def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_length=0):
+def compute_loss(
+    outputs,
+    target_ids,
+    criterion,
+    num_image_tokens=513,
+    prompt_length=0,
+    pad_token_id=-100,
+):
     """
     Compute the cross-entropy loss for text generation with teacher forcing.
 
@@ -39,6 +46,11 @@ def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_le
         :, num_image_tokens + prompt_length - 1 : -1, :
     ].contiguous()
     labels = target_ids[:, 1:].contiguous()
+    labels = torch.where(
+        labels == pad_token_id,
+        torch.tensor(-100, device=labels.device),
+        labels,
+    )
 
     vocab_size = logits_for_targets.size(-1)
 
@@ -50,7 +62,14 @@ def compute_loss(outputs, target_ids, criterion, num_image_tokens=513, prompt_le
 
 
 def validate(
-    model, prompt_ids, prompt_attention, dataloader, criterion, device, use_amp=True
+    model,
+    prompt_ids,
+    prompt_attention,
+    dataloader,
+    criterion,
+    device,
+    pad_token_id=-100,
+    use_amp=True,
 ):
     """Run validation and return average loss."""
     model.eval()
@@ -88,6 +107,7 @@ def validate(
                     criterion,
                     num_image_tokens=513,
                     prompt_length=prompt_length,
+                    pad_token_id=pad_token_id,
                 )
 
             total_loss += loss.item()
@@ -133,6 +153,10 @@ def main(objective: str, config_name: str):
         state_dict_path=model_config.model_state_dict_path,
     )
     model.to(device)
+    pad_token_id = (
+        model.decoder.tokenizer.pad_token_id if model.decoder.tokenizer else -100
+    )
+    logger.info(f"Pad token ID: {pad_token_id}")
 
     # Wrap model in DistributedDataParallel for multi-GPU training
     if world_size > 1:
@@ -281,6 +305,7 @@ def main(objective: str, config_name: str):
             criterion,
             device,
             use_amp,
+            pad_token_id=pad_token_id,
         )
 
         if main_process_flag:
@@ -352,6 +377,7 @@ def main(objective: str, config_name: str):
         criterion,
         device,
         use_amp,
+        pad_token_id=pad_token_id,
     )
 
     if main_process_flag:

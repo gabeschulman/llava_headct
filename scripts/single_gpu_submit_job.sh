@@ -34,6 +34,6 @@ echo "Node: $SLURM_NODELIST"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-python src/trainer.py --config_name narrative_train_config --objective narrative_generation
+python src/trainer.py --config_name pretrain_config --objective condition_classification
 
 echo "Job completed at: $(date)"

@@ -41,7 +41,7 @@ def main():
                 return_dtype=pl.String,
             )
             .map_elements(
-                lambda elt: "Conditions: " + elt if elt != "" else "Conditons: none",
+                lambda elt: "Conditions: " + elt if elt != "" else "Conditions: none",
                 return_dtype=pl.String,
             )
         )

@@ -1,3 +1,4 @@
+from functools import partial
 import polars as pl
 import torch
 import numpy as np
@@ -66,6 +67,7 @@ class HeadCTDataset(Dataset):
         self.max_text_length = max_text_length
         if tokenizer_model_name:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model_name)
+            self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
         # Create the data list in MONAI format
         self.data: List[dict] = [
@@ -173,12 +175,18 @@ class HeadCTDataset(Dataset):
                 max_length=self.max_text_length,
             )
             result["input_ids"] = tokenized["input_ids"].squeeze(0)
+            result["input_ids"] = torch.cat(
+                [result["input_ids"], torch.tensor([self.tokenizer.eos_token_id])]
+            )
             result["attention_mask"] = tokenized["attention_mask"].squeeze(0)
+            result["attention_mask"] = torch.cat(
+                [result["attention_mask"], torch.tensor([1])]
+            )
 
         return result
 
 
-def collate_fn_dynamic_padding(batch):
+def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
     """
     Custom collate function that pads sequences dynamically to the longest in the batch.
     Filters out images with incorrect shapes (e.g., 6 channels instead of 3).
@@ -203,7 +211,7 @@ def collate_fn_dynamic_padding(batch):
     for ids, mask in zip(input_ids, attention_masks):
         padding_length = max_len - len(ids)
         padded_input_ids.append(
-            torch.cat([ids, torch.zeros(padding_length, dtype=ids.dtype)])
+            torch.cat([ids, torch.tensor([padding_token_id]).repeat(padding_length)])
         )
         padded_attention_masks.append(
             torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
@@ -282,7 +290,11 @@ def create_head_ct_dataloader(
         sampler=sampler,
         shuffle=shuffle if sampler is None else False,
         persistent_workers=persistent_workers,
-        collate_fn=collate_fn_dynamic_padding,
+        collate_fn=partial(
+            collate_fn_dynamic_padding, padding_token_id=dataset.tokenizer.pad_token_id
+        )
+        if dataset.tokenizer
+        else None,
     )
 
     return dataloader

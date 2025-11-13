@@ -59,7 +59,9 @@ class Decoder(nn.Module):
     def __init__(self, model_name: str):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model.resize_token_embeddings(len(self.tokenizer))
         self.model.gradient_checkpointing_enable()
 
     def forward(self, input_embeds, attention_mask=None, **kwargs):
