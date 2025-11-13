@@ -68,8 +68,8 @@ def validate(
     dataloader,
     criterion,
     device,
-    pad_token_id=-100,
     use_amp=True,
+    pad_token_id=-100,
 ):
     """Run validation and return average loss."""
     model.eval()
@@ -304,7 +304,7 @@ def main(objective: str, config_name: str):
             val_dataloader,
             criterion,
             device,
-            use_amp,
+            use_amp=use_amp,
             pad_token_id=pad_token_id,
         )
 
@@ -376,7 +376,7 @@ def main(objective: str, config_name: str):
         test_dataloader,
         criterion,
         device,
-        use_amp,
+        use_amp=use_amp,
         pad_token_id=pad_token_id,
     )
 
