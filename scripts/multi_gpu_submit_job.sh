@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:a100:4
-#SBATCH --time=48:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --mem=128G
 #SBATCH --partition=a100_short
 #SBATCH --output=logs/slurm_%j.out
