@@ -186,6 +186,7 @@ class DataLoaderHandler:
             "condition_classification": "conditions",
             "impression_generation": "impression_deid",
             "narrative_generation": "narrative_deid",
+            "qa_training": "qa_answer",
         }
         if self.objective not in self.supported_objectives.keys():
             raise ValueError(f"Unsupported objective: {self.objective}")
@@ -229,6 +230,7 @@ class DataLoaderHandler:
             "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
             "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
             "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
+            "qa_training": "Answer the following question about this CT scan:",
         }
         text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(  # type: ignore
             prompt_templates[self.objective],

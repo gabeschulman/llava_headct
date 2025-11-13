@@ -70,6 +70,7 @@ def validate(
     device,
     pad_token_id=-100,
     use_amp=True,
+    is_qa_training=False,
 ):
     """Run validation and return average loss."""
     model.eval()
@@ -85,9 +86,27 @@ def validate(
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
             current_batch_size = images.shape[0]
-            prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
-            prompt_attention_batch = prompt_attention.expand(current_batch_size, -1)
-            prompt_length = prompt_ids_batch.shape[1]
+
+            if is_qa_training and "questions" in batch:
+                questions = batch["questions"]
+                model_unwrapped = (
+                    model.module
+                    if isinstance(model, torch.nn.parallel.DistributedDataParallel)
+                    else model
+                )
+                prompt_tokens_list = model_unwrapped.decoder.tokenizer(
+                    questions,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                )
+                prompt_ids_batch = prompt_tokens_list["input_ids"].to(device)
+                prompt_attention_batch = prompt_tokens_list["attention_mask"].to(device)
+                prompt_length = prompt_ids_batch.shape[1]
+            else:
+                prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
+                prompt_attention_batch = prompt_attention.expand(current_batch_size, -1)
+                prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
             target_attention_mask = torch.ones_like(
@@ -215,6 +234,8 @@ def main(objective: str, config_name: str):
     prompt_input_ids: torch.Tensor = prompt_tokens[0]
     prompt_attention_mask: torch.Tensor = prompt_tokens[1]
 
+    is_qa_training = objective == "qa_training"
+
     for epoch in range(num_epochs):
         if world_size > 1:
             train_dataloader.sampler.set_epoch(epoch)  # type: ignore
@@ -232,9 +253,23 @@ def main(objective: str, config_name: str):
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
             batch_size_current = images.shape[0]
-            prompt_ids_batch = prompt_input_ids.expand(batch_size_current, -1)
-            prompt_mask_batch = prompt_attention_mask.expand(batch_size_current, -1)
-            prompt_length = prompt_ids_batch.shape[1]
+
+            if is_qa_training and "questions" in batch:
+                questions = batch["questions"]
+                # Tokenize each question separately
+                prompt_tokens_list = model_unwrapped.decoder.tokenizer(
+                    questions,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                )
+                prompt_ids_batch = prompt_tokens_list["input_ids"].to(device)
+                prompt_mask_batch = prompt_tokens_list["attention_mask"].to(device)
+                prompt_length = prompt_ids_batch.shape[1]
+            else:
+                prompt_ids_batch = prompt_input_ids.expand(batch_size_current, -1)
+                prompt_mask_batch = prompt_attention_mask.expand(batch_size_current, -1)
+                prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
             target_attention_mask = torch.ones_like(
@@ -306,6 +341,7 @@ def main(objective: str, config_name: str):
             device,
             use_amp,
             pad_token_id=pad_token_id,
+            is_qa_training=is_qa_training,
         )
 
         if main_process_flag:

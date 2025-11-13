@@ -1,0 +1,45 @@
+{
+    "decoder": {
+        "decoder_model_name": "Qwen/Qwen2.5-0.5B"
+    },
+    "projector": {
+        "projector_input_channels": 768,
+        "projector_inner_channels": 832,
+        "projector_out_channels": 896,
+        "projector_dropout": 0.1
+    },
+    "encoder": {
+        "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",
+        "vision_encoder_in_chans": 3,
+        "vision_encoder_img_size": 96,
+        "vision_encoder_patch_size": 12
+    },
+    "encoder_output": {
+        "num_image_tokens": 513
+    },
+    "dataset": {
+        "filepath": "/gpfs/scratch/bm3772/data/cached_images_qa_only",
+        "filenames": {
+            "test": "test/nyu_test_processed_cached.parquet",
+            "train": "train/nyu_train_processed_cached.parquet",
+            "val": "val/nyu_val_processed_cached.parquet"
+        }
+    },
+    "training": {
+        "gradient_accumulation_steps": 4,
+        "num_epochs": 5,
+        "max_epochs": 200,
+        "base_lr": 2e-5,
+        "weight_decay": 0.04,
+        "use_amp": true
+    },
+    "dataloader": {
+        "batch_size": 4,
+        "num_workers": 8,
+        "max_text_length": 512,
+        "roi": [-1000, 400],
+        "window_sizes": [[80, 80], [120, 120], [160, 160]],
+        "use_cached_images": true
+    },
+    "model_state_dict_path": null
+}

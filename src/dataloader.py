@@ -59,6 +59,10 @@ class HeadCTDataset(Dataset):
         self.image_paths: List[str] = self.image_df[image_path_col].to_list()
         self.objective_text: List[str] = self.image_df[objective_column].to_list()
 
+        self.questions: Optional[List[str]] = None
+        if "qa_question" in self.image_df.columns:
+            self.questions = self.image_df["qa_question"].to_list()
+
         self.roi: Tuple[int, int, int] = roi
         self.window_sizes: List[Tuple[int, int]] = window_sizes
 
@@ -166,6 +170,9 @@ class HeadCTDataset(Dataset):
             "objective": objective_text,
         }
 
+        if self.questions is not None:
+            result["question"] = self.questions[idx]
+
         if self.tokenizer:
             tokenized = self.tokenizer(
                 objective_text,
@@ -222,6 +229,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         "objective": objectives,
         "input_ids": torch.stack(padded_input_ids),
         "attention_mask": torch.stack(padded_attention_masks),
+        "questions": [item.get("question", None) for item in batch],
     }
 
 
