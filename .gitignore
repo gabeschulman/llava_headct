@@ -17,6 +17,9 @@ logs/*.out
 logs/*.err
 logs/*.log
 logs/slurm_*
+logs/test/*.log
+logs/test/*.out
+logs/test/*.err
 
 # IDE
 .vscode/
