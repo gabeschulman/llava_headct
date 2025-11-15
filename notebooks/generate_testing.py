@@ -1,20 +1,18 @@
-import sys
-
 import torch
 import torch.distributed as dist
 from src.model import LLaVAHeadCT
 from src.config_handler import ModelConfig, DataLoaderHandler
 
-sys.path.append("/gpfs/scratch/rpg8343/llava_headct")
+# sys.path.append("/gpfs/scratch/rpg8343/llava_headct")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 config_name = "narrative_train_config"
 
-objective = "narrative_generation"
+objective = "impression_generation"
 
 checkpoint_path = (
-    "/gpfs/scratch/gs4342/llava_headct/checkpoints/narrative_generation/best_model.pth"
+    "/gpfs/scratch/gs4342/llava_headct/checkpoints/impression_generation/best_model.pth"
 )
 
 rank = dist.get_rank() if dist.is_initialized() else 0

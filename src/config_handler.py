@@ -184,7 +184,7 @@ class DataLoaderHandler:
     def __post_init__(self) -> None:
         self.supported_objectives: dict[str, str] = {
             "condition_classification": "conditions",
-            "impression_generation": "impression_deid",
+            "impression_generation": "impression_deid_clean",
             "narrative_generation": "narrative_deid",
         }
         if self.objective not in self.supported_objectives.keys():

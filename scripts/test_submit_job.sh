@@ -6,13 +6,11 @@
 #SBATCH --gres=gpu:a100:1
 #SBATCH --time=1:00:00
 #SBATCH --mem=64G
-#SBATCH --partition=a100_dev
-#SBATCH --output=logs/slurm_%j.out
-#SBATCH --error=logs/slurm_%j.err
+#SBATCH --partition=a100_short
+#SBATCH --output=logs/test/slurm_%j.out
+#SBATCH --error=logs/test/slurm_%j.err
 
-mkdir -p /gpfs/scratch/$USER/llava_headct/logs
-mkdir -p /gpfs/scratch/$USER/llava_headct/checkpoints
-mkdir -p /gpfs/scratch/$USER/llava_headct/models
+mkdir -p /gpfs/scratch/$USER/llava_headct/logs/test
 
 module load cuda/11.8
 
@@ -34,6 +32,6 @@ echo "Node: $SLURM_NODELIST"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-python src/trainer.py --config_name narrative_train_config --objective impression_generation
+python notebooks/generate_testing.py --config_name pretrain_config --objective condition_classification
 
 echo "Job completed at: $(date)"

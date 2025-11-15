@@ -43,9 +43,9 @@ def compute_loss(
         loss: Computed loss value
     """
     logits_for_targets = outputs.logits[
-        :, num_image_tokens + prompt_length - 1 : -1, :
+        :, num_image_tokens + prompt_length - 1 :
     ].contiguous()
-    labels = target_ids[:, 1:].contiguous()
+    labels = target_ids.contiguous()
     labels = torch.where(
         labels == pad_token_id,
         torch.tensor(-100, device=labels.device),
