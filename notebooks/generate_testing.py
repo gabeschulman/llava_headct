@@ -11,9 +11,7 @@ config_name = "narrative_train_config"
 
 objective = "impression_generation"
 
-checkpoint_path = (
-    "/gpfs/scratch/gs4342/llava_headct/checkpoints/impression_generation/best_model.pth"
-)
+checkpoint_path = "/gpfs/scratch/gs4342/llava_headct/checkpoints/cached_weights/impression_generation_pretraining_1.pth"
 
 rank = dist.get_rank() if dist.is_initialized() else 0
 
@@ -62,7 +60,7 @@ test_dataloader = data_loader_handler.get_test_dataloader()
 ) = data_loader_handler.get_objective_prompt_tokens(model, device)
 
 # Hard Coded for Now
-classification_prompt = "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan."
+classification_prompt = "Generate a detailed radiologist's medical impression based on the findings from the attached head CT scan."
 
 count = 0
 

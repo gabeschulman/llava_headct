@@ -32,6 +32,6 @@ echo "Node: $SLURM_NODELIST"
 echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
-python notebooks/generate_testing.py --config_name pretrain_config --objective condition_classification
+python notebooks/generate_testing.py
 
 echo "Job completed at: $(date)"
