@@ -8,6 +8,7 @@ from monai import transforms
 from typing import List, Tuple, Optional
 from src.fm_ct.data.transforms import MultipleWindowScaleStack
 from transformers import AutoTokenizer
+from constants import PROMPT_TEMPLATES, OBJECTIVE_DICT, INDIVIDUAL_CONDITIONS_LIST
 
 
 class HeadCTDataset(Dataset):
@@ -24,7 +25,7 @@ class HeadCTDataset(Dataset):
     def __init__(
         self,
         image_file_location: str,
-        objective_column: str,
+        # objective_column: str,
         use_cached_images: bool = True,
         tokenizer_model_name: Optional[str] = None,
         max_text_length: int = 512,
@@ -34,6 +35,7 @@ class HeadCTDataset(Dataset):
         axcodes: str = "RAS",
         mode: int = 3,
         allow_missing_keys: bool = True,
+        numpy_seed: int = 1,
     ):
         """
         Initialize the dataset.
@@ -49,15 +51,17 @@ class HeadCTDataset(Dataset):
             mode: Interpolation mode for resampling
             allow_missing_keys: Whether to allow missing keys in transforms
         """
+        np.random.seed(numpy_seed)
         self.image_df: pl.DataFrame = pl.read_parquet(image_file_location)
-        self.image_df = self.image_df.filter(
-            pl.col(objective_column).is_not_null()
-            & (pl.col(objective_column).str.len_chars() > 0)
-        )
+        # self.image_df = self.image_df.filter(
+        #     pl.col(objective_column).is_not_null()
+        #     & (pl.col(objective_column).str.len_chars() > 0)
+        # )
 
-        image_path_col: str = "img_path" if not use_cached_images else "cached_path"
-        self.image_paths: List[str] = self.image_df[image_path_col].to_list()
-        self.objective_text: List[str] = self.image_df[objective_column].to_list()
+        self.image_path_col: str = (
+            "img_path" if not use_cached_images else "cached_path"
+        )
+        # self.image_paths: List[str] = self.image_df[image_path_col].to_list()
 
         self.roi: Tuple[int, int, int] = roi
         self.window_sizes: List[Tuple[int, int]] = window_sizes
@@ -69,11 +73,11 @@ class HeadCTDataset(Dataset):
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model_name)
             self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-        # Create the data list in MONAI format
-        self.data: List[dict] = [
-            {"image_item": {"image": path}, "objective": obj}
-            for path, obj in zip(self.image_paths, self.objective_text)
-        ]
+        # # Create the data list in MONAI format
+        # self.data: List[dict] = [
+        #     {"image_item": {"image": path}, "objective": obj}
+        #     for path, obj in zip(self.image_paths, self.objective_text)
+        # ]
 
         # Initialize transforms - only needed if not using cached images (preferred)
         self.transforms = None
@@ -81,6 +85,61 @@ class HeadCTDataset(Dataset):
             self.transforms = self._build_transforms(
                 roi, window_sizes, pixdim, axcodes, mode, allow_missing_keys
             )
+
+    @property
+    def objectives(self) -> List[str]:
+        """Get the list of objectives."""
+        return list(OBJECTIVE_DICT.keys())
+
+    @property
+    def objective_probabilities(self) -> List[float]:
+        """Get the objective probabilities dictionary."""
+        return list(OBJECTIVE_DICT.values())
+
+    @property
+    def number_of_objectives(self) -> int:
+        """Get the number of objectives."""
+        return len(OBJECTIVE_DICT)
+
+    @property
+    def data(self) -> dict:
+        objectives = []
+        for row in self.image_df.iter_rows(named=True):
+            choice = np.random.choice(self.objectives, p=self.objective_probabilities)
+            prompt_text, objective_text = self.map_choice_to_objective(row, choice)
+            if objective_text is None or (
+                isinstance(objective_text, str) and len(objective_text.strip()) == 0
+            ):
+                continue
+            objectives.append(
+                {
+                    "image_item": {"image": row[self.image_path_col]},
+                    "prompt": prompt_text,
+                    "objective": objective_text,
+                }
+            )
+        return objectives
+
+    def map_choice_to_objective(self, row: str, choice: str) -> tuple:
+        if choice == "condition_classification":
+            return PROMPT_TEMPLATES["condition_classification"], row["conditions"]
+        elif choice == "impression_generation":
+            return (
+                PROMPT_TEMPLATES["impression_generation"],
+                row["impression_deid_clean"],
+            )
+        elif choice == "narrative_generation":
+            return PROMPT_TEMPLATES["narrative_generation"], row["narrative_deid"]
+        elif choice == "individual_condition_classification":
+            condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
+            return (
+                PROMPT_TEMPLATES["individual_condition_classification"].format(
+                    condition=condition
+                ),
+                "Yes" if row[condition] == 1 else "No",
+            )
+        else:
+            raise ValueError(f"Unsupported objective choice: {choice}")
 
     def _build_transforms(
         self,
@@ -154,6 +213,7 @@ class HeadCTDataset(Dataset):
             image_array = np.load(cached_path)
             image_tensor = torch.from_numpy(image_array)
 
+        prompt_text = sample_data["prompt"]
         objective_text = sample_data["objective"]
 
         if objective_text is None or (
@@ -163,6 +223,7 @@ class HeadCTDataset(Dataset):
 
         result = {
             "image": image_tensor,
+            "prompt": prompt_text,
             "objective": objective_text,
         }
 
@@ -182,6 +243,15 @@ class HeadCTDataset(Dataset):
             result["attention_mask"] = torch.cat(
                 [result["attention_mask"], torch.tensor([1])]
             )
+
+            prompt_tokens: dict[str, torch.Tensor] = self.tokenizer(
+                prompt_text,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+            )
+            result["prompt_input_ids"] = prompt_tokens["input_ids"].squeeze(0)
+            result["prompt_attention_mask"] = prompt_tokens["attention_mask"].squeeze(0)
 
         return result
 
@@ -203,7 +273,11 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
     input_ids = [item["input_ids"] for item in batch]
     attention_masks = [item["attention_mask"] for item in batch]
 
+    prompt_input_ids = [item["prompt_input_ids"] for item in batch]
+    prompt_attention_masks = [item["prompt_attention_mask"] for item in batch]
+
     max_len = max(len(ids) for ids in input_ids)
+    max_prompt_len = max(len(ids) for ids in prompt_input_ids)
 
     padded_input_ids = []
     padded_attention_masks = []
@@ -217,17 +291,30 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
             torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
         )
 
+    padded_prompt_input_ids = []
+    padded_prompt_attention_masks = []
+
+    for ids, mask in zip(prompt_input_ids, prompt_attention_masks):
+        padding_length = max_prompt_len - len(ids)
+        padded_prompt_input_ids.append(
+            torch.cat([ids, torch.tensor([padding_token_id]).repeat(padding_length)])
+        )
+        padded_prompt_attention_masks.append(
+            torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
+        )
+
     return {
         "image": images,
         "objective": objectives,
         "input_ids": torch.stack(padded_input_ids),
         "attention_mask": torch.stack(padded_attention_masks),
+        "prompt_input_ids": torch.stack(padded_prompt_input_ids),
+        "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
     }
 
 
 def create_head_ct_dataloader(
     image_file_location: str,
-    objective_column: str,
     batch_size: int = 4,
     num_workers: int = 1,
     pin_memory: bool = True,
@@ -263,7 +350,6 @@ def create_head_ct_dataloader(
     """
     dataset = HeadCTDataset(
         image_file_location=image_file_location,
-        objective_column=objective_column,
         use_cached_images=use_cached_images,
         tokenizer_model_name=tokenizer_model_name,
         max_text_length=max_text_length,

@@ -41,5 +41,5 @@
         "window_sizes": [[80, 80], [120, 120], [160, 160]],
         "use_cached_images": true
     },
-    "model_state_dict_path": "checkpoints/cached_weights/impression_generation_pretraining_1.pth"
+    "model_state_dict_path": "checkpoints/cached_weights/condition_classification_pretraining_4.pth"
 }

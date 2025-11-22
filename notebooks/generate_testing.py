@@ -11,7 +11,7 @@ config_name = "narrative_train_config"
 
 objective = "impression_generation"
 
-checkpoint_path = "/gpfs/scratch/gs4342/llava_headct/checkpoints/cached_weights/impression_generation_pretraining_1.pth"
+checkpoint_path = "/gpfs/scratch/gs4342/llava_headct/checkpoints/cached_weights/condition_classification_pretraining_4.pth"
 
 rank = dist.get_rank() if dist.is_initialized() else 0
 

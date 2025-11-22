@@ -3,11 +3,9 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Union
-import torch
 from torch.utils.data import DataLoader
 
 from src.dataloader import create_head_ct_dataloader
-from src.model import LLaVAHeadCT
 
 FILEPATH = Path(__file__).parent.resolve()
 
@@ -176,22 +174,21 @@ class ModelConfig:
 class DataLoaderHandler:
     """Class to manage data loader configuration."""
 
-    objective: str
     model_config: ModelConfig
     rank: int = 0
     world_size: int = 1
 
     def __post_init__(self) -> None:
-        self.supported_objectives: dict[str, str] = {
-            "condition_classification": "conditions",
-            "impression_generation": "impression_deid_clean",
-            "narrative_generation": "narrative_deid",
-        }
-        if self.objective not in self.supported_objectives.keys():
-            raise ValueError(f"Unsupported objective: {self.objective}")
-        self.objective_column = self.supported_objectives[self.objective]
+        # self.supported_objectives: dict[str, str] = {
+        #     "condition_classification": "conditions",
+        #     "impression_generation": "impression_deid_clean",
+        #     "narrative_generation": "narrative_deid",
+        # }
+        # if self.objective not in self.supported_objectives.keys():
+        #     raise ValueError(f"Unsupported objective: {self.objective}")
+        # self.objective_column = self.supported_objectives[self.objective]
         self.shared_gen_dataloader_args = {
-            "objective_column": self.objective_column,
+            # "objective_column": self.objective_column,
             "tokenizer_model_name": self.model_config.decoder_config[
                 "decoder_model_name"
             ],
@@ -220,22 +217,22 @@ class DataLoaderHandler:
             **self.model_config.dataloader_config,
         )
 
-    def get_objective_prompt_tokens(
-        self,
-        model: Union[LLaVAHeadCT, torch.nn.parallel.DistributedDataParallel],
-        device: torch.device,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        prompt_templates: dict[str, str] = {
-            "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
-            "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
-            "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
-        }
-        text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(  # type: ignore
-            prompt_templates[self.objective],
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-        )
-        return text_tokens["input_ids"].to(device), text_tokens["attention_mask"].to(
-            device
-        )
+    # def get_objective_prompt_tokens(
+    #     self,
+    #     model: Union[LLaVAHeadCT, torch.nn.parallel.DistributedDataParallel],
+    #     device: torch.device,
+    # ) -> tuple[torch.Tensor, torch.Tensor]:
+    #     prompt_templates: dict[str, str] = {
+    #         "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
+    #         "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
+    #         "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
+    #     }
+    #     text_tokens: dict[str, torch.Tensor] = model.decoder.tokenizer(  # type: ignore
+    #         prompt_templates[self.objective],
+    #         return_tensors="pt",
+    #         padding=True,
+    #         truncation=True,
+    #     )
+    #     return text_tokens["input_ids"].to(device), text_tokens["attention_mask"].to(
+    #         device
+    #     )
