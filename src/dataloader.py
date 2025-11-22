@@ -111,11 +111,13 @@ class HeadCTDataset(Dataset):
                 isinstance(objective_text, str) and len(objective_text.strip()) == 0
             ):
                 continue
+            accession_number = row["accession_number"]
             objectives.append(
                 {
                     "image_item": {"image": row[self.image_path_col]},
                     "prompt": prompt_text,
                     "objective": objective_text,
+                    "accession_number": accession_number,
                 }
             )
         return objectives
@@ -225,6 +227,7 @@ class HeadCTDataset(Dataset):
             "image": image_tensor,
             "prompt": prompt_text,
             "objective": objective_text,
+            "accession_number": sample_data["accession_number"],
         }
 
         if self.tokenizer:
@@ -276,6 +279,8 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
     prompt_input_ids = [item["prompt_input_ids"] for item in batch]
     prompt_attention_masks = [item["prompt_attention_mask"] for item in batch]
 
+    accession_numbers = [item["accession_number"] for item in batch]
+
     max_len = max(len(ids) for ids in input_ids)
     max_prompt_len = max(len(ids) for ids in prompt_input_ids)
 
@@ -310,6 +315,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         "attention_mask": torch.stack(padded_attention_masks),
         "prompt_input_ids": torch.stack(padded_prompt_input_ids),
         "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
+        "accession_number": accession_numbers,
     }
 
 
