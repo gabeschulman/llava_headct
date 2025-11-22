@@ -120,7 +120,7 @@ def validate(
     return avg_loss
 
 
-def main(config_name: str):
+def main(job_id: int, config_name: str):
     rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     main_process_flag = is_main_process()
@@ -285,10 +285,8 @@ def main(config_name: str):
                 )
 
             if batch_idx % 1000 == 0 and batch_idx > 0 and main_process_flag:
-                checkpoint_path = (
-                    f"checkpoints/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
-                )
-                Path("checkpoints").mkdir(exist_ok=True, parents=True)
+                checkpoint_path = f"checkpoints/{job_id}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
+                Path(f"checkpoints/{job_id}").mkdir(exist_ok=True, parents=True)
                 torch.save(
                     {
                         "epoch": epoch,
@@ -326,8 +324,8 @@ def main(config_name: str):
         if val_loss < best_val_loss and main_process_flag:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            best_model_path = "checkpoints/best_model.pth"
-            Path("checkpoints").mkdir(exist_ok=True, parents=True)
+            best_model_path = f"checkpoints/{job_id}/best_model.pth"
+            Path(f"checkpoints/{job_id}").mkdir(exist_ok=True, parents=True)
             # Unwrap DDP model for saving
             model_to_save = model.module if world_size > 1 else model
             torch.save(
@@ -343,7 +341,7 @@ def main(config_name: str):
             logger.info(f"New best model saved! Val Loss: {val_loss:.4f}")
 
         if main_process_flag:
-            epoch_checkpoint_path = f"checkpoints/epoch_{epoch+1}.pth"
+            epoch_checkpoint_path = f"checkpoints/{job_id}/epoch_{epoch+1}.pth"
             model_to_save = model.module if world_size > 1 else model
             torch.save(
                 {
@@ -360,13 +358,13 @@ def main(config_name: str):
         logger.info(
             f"Training completed! Best validation loss: {best_val_loss:.4f} at epoch {best_epoch}"
         )
-        logger.info("Best model saved at: checkpoints/best_model.pth")
+        logger.info(f"Best model saved at: checkpoints/{job_id}/best_model.pth")
 
         logger.info("=" * 80)
         logger.info("Running final evaluation on test set...")
         logger.info("Loading best model checkpoint...")
 
-    best_checkpoint = torch.load("checkpoints/best_model.pth")
+    best_checkpoint = torch.load(f"checkpoints/{job_id}/best_model.pth")
     model_unwrapped = model.module if world_size > 1 else model
     model_unwrapped.load_state_dict(best_checkpoint["model_state_dict"])  # type: ignore
 
@@ -395,7 +393,8 @@ def main(config_name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Training script")
+    parser.add_argument("--job_id", type=int, help="Job ID")
     parser.add_argument("--config_name", type=str, help="Config file name")
     args = parser.parse_args()
 
-    main(config_name=args.config_name)
+    main(job_id=args.job_id, config_name=args.config_name)

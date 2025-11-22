@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Optional, Sequence
 
 import torch
 from torch import nn
@@ -9,19 +9,26 @@ from src.fm_ct.vit import ViT
 class Encoder(ViT):
     def __init__(
         self,
-        weights_path: str,
-        in_chans: int,
-        img_size: Sequence[int] | int,
-        patch_size: Sequence[int] | int,
+        weights_path: Optional[str] = None,
+        in_chans: int = 3,
+        img_size: Sequence[int] | int = 96,
+        patch_size: Sequence[int] | int = 12,
+        use_pretrained_weights: bool = True,
+        fine_tune: bool = False,
+        fine_tune_blocks: int = 2,
         **kwargs,
     ):
         super().__init__(
             in_chans=in_chans, img_size=img_size, patch_size=patch_size, **kwargs
         )
         self.weights_path = weights_path
-        self._load_weights()
+        if use_pretrained_weights:
+            self._load_weights()
         self._freeze_weights()
-        self.eval()
+        if fine_tune:
+            self.unfreeze_last_n_blocks(n=fine_tune_blocks)
+        else:
+            self.eval()
 
     def _load_weights(self):
         loaded_state_dict = torch.load(
@@ -36,6 +43,17 @@ class Encoder(ViT):
     def _freeze_weights(self):
         for param in self.parameters():
             param.requires_grad = False
+
+    def unfreeze_last_n_blocks(self, n: int):
+        """Unfreeze the last n transformer blocks for fine-tuning."""
+        total_blocks = len(self.blocks)
+        for block in self.blocks[total_blocks - n :]:
+            for param in block.parameters():
+                param.requires_grad = True
+
+        if hasattr(self, "norm"):
+            for param in self.norm.parameters():
+                param.requires_grad = True
 
 
 class Projector(nn.Module):

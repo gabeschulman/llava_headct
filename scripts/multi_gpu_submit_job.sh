@@ -36,6 +36,6 @@ echo "Working directory: $(pwd)"
 
 # Launch with torchrun for distributed training
 torchrun --nnodes 1 --nproc_per_node 4 --master_port 12400 \
-    src/trainer.py --config_name narrative_train_config
+    src/trainer.py --job_id $SLURM_JOB_ID --config_name narrative_train_config
 
 echo "Job completed at: $(date)"

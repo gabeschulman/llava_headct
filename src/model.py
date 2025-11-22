@@ -20,6 +20,9 @@ class LLaVAHeadCT(nn.Module):
         learning_rate: float = 1e-4,
         weight_decay: float = 0.01,
         state_dict_path: Optional[str] = None,
+        fine_tune_encoder: bool = False,
+        fine_tune_encoder_blocks: int = 2,
+        use_pretrained_encoder_weights: bool = True,
     ):
         super().__init__()
         self.encoder = Encoder(
@@ -27,6 +30,9 @@ class LLaVAHeadCT(nn.Module):
             in_chans=vision_encoder_in_chans,
             img_size=vision_encoder_img_size,
             patch_size=vision_encoder_patch_size,
+            fine_tune=fine_tune_encoder,
+            fine_tune_blocks=fine_tune_encoder_blocks,
+            use_pretrained_weights=use_pretrained_encoder_weights,
         )
 
         self.projector = Projector(
@@ -37,7 +43,6 @@ class LLaVAHeadCT(nn.Module):
         )
 
         self.decoder = Decoder(model_name=decoder_model_name)
-        
 
         if state_dict_path is not None:
             self.state_dict_path = state_dict_path
@@ -155,13 +160,17 @@ class LLaVAHeadCT(nn.Module):
                 text_attention_mask = text_tokens["attention_mask"].to(image.device)
                 text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
 
-                combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
+                combined_embeds = torch.cat(
+                    [projected_image_features, text_embeds], dim=1
+                )
                 img_mask = torch.ones(
                     projected_image_features.shape[:2],
                     device=image.device,
                     dtype=text_attention_mask.dtype,
                 )
-                combined_attention_mask = torch.cat([img_mask, text_attention_mask], dim=1)
+                combined_attention_mask = torch.cat(
+                    [img_mask, text_attention_mask], dim=1
+                )
             else:
                 combined_embeds = projected_image_features
                 combined_attention_mask = torch.ones(
