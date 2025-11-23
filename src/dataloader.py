@@ -106,7 +106,7 @@ class HeadCTDataset(Dataset):
                 isinstance(objective_text, str) and len(objective_text.strip()) == 0
             ):
                 continue
-            accession_number = row["accession_number"]
+            accession_number = row["accession_num"]
             objectives.append(
                 {
                     "image_item": {"image": row[self.image_path_col]},
@@ -323,7 +323,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         "attention_mask": torch.stack(padded_attention_masks),
         "prompt_input_ids": torch.stack(padded_prompt_input_ids),
         "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
-        "accession_number": accession_numbers,
+        "accession_numbers": accession_numbers,
     }
 
 
