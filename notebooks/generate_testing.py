@@ -1,21 +1,17 @@
-import sys
-
 import torch
 import torch.distributed as dist
 from src.model import LLaVAHeadCT
 from src.config_handler import ModelConfig, DataLoaderHandler
 
-sys.path.append("/gpfs/scratch/rpg8343/llava_headct")
+# sys.path.append("/gpfs/scratch/rpg8343/llava_headct")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 config_name = "narrative_train_config"
 
-objective = "narrative_generation"
+objective = "impression_generation"
 
-checkpoint_path = (
-    "/gpfs/scratch/gs4342/llava_headct/checkpoints/narrative_generation/best_model.pth"
-)
+checkpoint_path = "/gpfs/scratch/gs4342/llava_headct/checkpoints/cached_weights/condition_classification_pretraining_4.pth"
 
 rank = dist.get_rank() if dist.is_initialized() else 0
 
@@ -64,7 +60,7 @@ test_dataloader = data_loader_handler.get_test_dataloader()
 ) = data_loader_handler.get_objective_prompt_tokens(model, device)
 
 # Hard Coded for Now
-classification_prompt = "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan."
+classification_prompt = "Generate a detailed radiologist's medical impression based on the findings from the attached head CT scan."
 
 count = 0
 

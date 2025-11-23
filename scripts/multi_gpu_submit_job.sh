@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:a100:4
+#SBATCH --gres=gpu:a100:2
 #SBATCH --time=2-00:00:00
 #SBATCH --mem=128G
 #SBATCH --partition=a100_short
@@ -36,6 +36,6 @@ echo "Working directory: $(pwd)"
 
 # Launch with torchrun for distributed training
 torchrun --nnodes 1 --nproc_per_node 4 --master_port 12400 \
-    src/trainer.py --config_name narrative_train_config --objective impression_generation
+    src/trainer.py --job_id $SLURM_JOB_ID --config_name narrative_train_config
 
 echo "Job completed at: $(date)"

@@ -40,5 +40,6 @@
         "roi": [-1000, 400],
         "window_sizes": [[80, 80], [120, 120], [160, 160]],
         "use_cached_images": true
-    }
+    },
+    "model_state_dict_path": "checkpoints/cached_weights/condition_classification_pretraining_4.pth"
 }

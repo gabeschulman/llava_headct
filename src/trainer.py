@@ -43,9 +43,9 @@ def compute_loss(
         loss: Computed loss value
     """
     logits_for_targets = outputs.logits[
-        :, num_image_tokens + prompt_length - 1 : -1, :
+        :, num_image_tokens + prompt_length - 1 :
     ].contiguous()
-    labels = target_ids[:, 1:].contiguous()
+    labels = target_ids.contiguous()
     labels = torch.where(
         labels == pad_token_id,
         torch.tensor(-100, device=labels.device),
@@ -63,8 +63,6 @@ def compute_loss(
 
 def validate(
     model,
-    prompt_ids,
-    prompt_attention,
     dataloader,
     criterion,
     device,
@@ -84,9 +82,14 @@ def validate(
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
-            current_batch_size = images.shape[0]
-            prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
-            prompt_attention_batch = prompt_attention.expand(current_batch_size, -1)
+            prompt_ids_batch = batch["prompt_input_ids"].to(device, non_blocking=True)
+            prompt_attention_batch = batch["prompt_attention_mask"].to(
+                device, non_blocking=True
+            )
+
+            # current_batch_size = images.shape[0]
+            # prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
+            # prompt_attention_batch = prompt_attention.expand(current_batch_size, -1)
             prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
@@ -117,7 +120,7 @@ def validate(
     return avg_loss
 
 
-def main(objective: str, config_name: str):
+def main(job_id: int, config_name: str):
     rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     main_process_flag = is_main_process()
@@ -137,7 +140,7 @@ def main(objective: str, config_name: str):
     if main_process_flag:
         logger.info(f"Loaded config: {model_config}")
     data_loader_handler = DataLoaderHandler(
-        objective, model_config, rank=rank, world_size=world_size
+        model_config, rank=rank, world_size=world_size
     )
 
     if model_config.model_state_dict_path and main_process_flag:
@@ -208,12 +211,12 @@ def main(objective: str, config_name: str):
     best_epoch = 0
 
     model_unwrapped = model.module if world_size > 1 else model
-    prompt_tokens: tuple = data_loader_handler.get_objective_prompt_tokens(
-        model_unwrapped,  # type: ignore
-        device,
-    )
-    prompt_input_ids: torch.Tensor = prompt_tokens[0]
-    prompt_attention_mask: torch.Tensor = prompt_tokens[1]
+    # prompt_tokens: tuple = data_loader_handler.get_objective_prompt_tokens(
+    #     model_unwrapped,  # type: ignore
+    #     device,
+    # )
+    # prompt_input_ids: torch.Tensor = prompt_tokens[0]
+    # prompt_attention_mask: torch.Tensor = prompt_tokens[1]
 
     for epoch in range(num_epochs):
         if world_size > 1:
@@ -231,9 +234,13 @@ def main(objective: str, config_name: str):
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
-            batch_size_current = images.shape[0]
-            prompt_ids_batch = prompt_input_ids.expand(batch_size_current, -1)
-            prompt_mask_batch = prompt_attention_mask.expand(batch_size_current, -1)
+            # batch_size_current = images.shape[0]
+            # prompt_ids_batch = prompt_input_ids.expand(batch_size_current, -1)
+            # prompt_mask_batch = prompt_attention_mask.expand(batch_size_current, -1)
+            prompt_ids_batch = batch["prompt_input_ids"].to(device, non_blocking=True)
+            prompt_mask_batch = batch["prompt_attention_mask"].to(
+                device, non_blocking=True
+            )
             prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
@@ -278,8 +285,8 @@ def main(objective: str, config_name: str):
                 )
 
             if batch_idx % 1000 == 0 and batch_idx > 0 and main_process_flag:
-                checkpoint_path = f"checkpoints/{objective}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
-                Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
+                checkpoint_path = f"checkpoints/{job_id}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
+                Path(f"checkpoints/{job_id}").mkdir(exist_ok=True, parents=True)
                 torch.save(
                     {
                         "epoch": epoch,
@@ -299,8 +306,6 @@ def main(objective: str, config_name: str):
             logger.info(f"Running validation for epoch {epoch+1}...")
         val_loss = validate(
             model,
-            prompt_input_ids,
-            prompt_attention_mask,
             val_dataloader,
             criterion,
             device,
@@ -319,8 +324,8 @@ def main(objective: str, config_name: str):
         if val_loss < best_val_loss and main_process_flag:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            best_model_path = f"checkpoints/{objective}/best_model.pth"
-            Path(f"checkpoints/{objective}").mkdir(exist_ok=True, parents=True)
+            best_model_path = f"checkpoints/{job_id}/best_model.pth"
+            Path(f"checkpoints/{job_id}").mkdir(exist_ok=True, parents=True)
             # Unwrap DDP model for saving
             model_to_save = model.module if world_size > 1 else model
             torch.save(
@@ -336,7 +341,7 @@ def main(objective: str, config_name: str):
             logger.info(f"New best model saved! Val Loss: {val_loss:.4f}")
 
         if main_process_flag:
-            epoch_checkpoint_path = f"checkpoints/{objective}/epoch_{epoch+1}.pth"
+            epoch_checkpoint_path = f"checkpoints/{job_id}/epoch_{epoch+1}.pth"
             model_to_save = model.module if world_size > 1 else model
             torch.save(
                 {
@@ -353,13 +358,13 @@ def main(objective: str, config_name: str):
         logger.info(
             f"Training completed! Best validation loss: {best_val_loss:.4f} at epoch {best_epoch}"
         )
-        logger.info(f"Best model saved at: checkpoints/{objective}/best_model.pth")
+        logger.info(f"Best model saved at: checkpoints/{job_id}/best_model.pth")
 
         logger.info("=" * 80)
         logger.info("Running final evaluation on test set...")
         logger.info("Loading best model checkpoint...")
 
-    best_checkpoint = torch.load(f"checkpoints/{objective}/best_model.pth")
+    best_checkpoint = torch.load(f"checkpoints/{job_id}/best_model.pth")
     model_unwrapped = model.module if world_size > 1 else model
     model_unwrapped.load_state_dict(best_checkpoint["model_state_dict"])  # type: ignore
 
@@ -371,8 +376,6 @@ def main(objective: str, config_name: str):
 
     test_loss = validate(
         model,
-        prompt_input_ids,
-        prompt_attention_mask,
         test_dataloader,
         criterion,
         device,
@@ -390,8 +393,8 @@ def main(objective: str, config_name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Training script")
-    parser.add_argument("--objective", type=str, help="Objective column name")
+    parser.add_argument("--job_id", type=int, help="Job ID")
     parser.add_argument("--config_name", type=str, help="Config file name")
     args = parser.parse_args()
 
-    main(objective=args.objective, config_name=args.config_name)
+    main(job_id=args.job_id, config_name=args.config_name)
