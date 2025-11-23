@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import torch
 import torch.distributed as dist
+from torch.optim.lr_scheduler import LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
@@ -16,7 +17,7 @@ def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
 
 
-def compute_loss(
+def compute_teacher_forcing_loss(
     outputs,
     target_ids,
     criterion,
@@ -61,6 +62,41 @@ def compute_loss(
     return loss
 
 
+def compute_contrastive_loss(image_embeddings, text_embeddings, temperature=0.07):
+    """
+    Compute contrastive loss between image and text embeddings.
+
+    Args:
+        image_embeddings: Image embeddings tensor of shape [batch_size, embed_dim]
+        text_embeddings: Text embeddings tensor of shape [batch_size, embed_dim]
+        temperature: Scaling factor for logits (default is value for CLIP)
+    Returns:
+        loss: Computed contrastive loss
+    """
+    batch_size = image_embeddings.size(0)
+
+    # Take embedding means
+    image_embeddings = image_embeddings.mean(dim=1)
+    text_embeddings = text_embeddings.mean(dim=1)
+
+    # Normalize embeddings
+    image_embeddings = nn.functional.normalize(image_embeddings, p=2, dim=1)
+    text_embeddings = nn.functional.normalize(text_embeddings, p=2, dim=1)
+
+    # Compute similarity matrix
+    logits = torch.matmul(image_embeddings, text_embeddings.t()) / temperature
+
+    labels = torch.arange(batch_size).to(image_embeddings.device)
+
+    criterion = nn.CrossEntropyLoss()
+    loss_i2t = criterion(logits, labels)
+    loss_t2i = criterion(logits.t(), labels)
+
+    loss = (loss_i2t + loss_t2i) / 2.0
+
+    return loss
+
+
 def validate(
     model,
     dataloader,
@@ -82,14 +118,12 @@ def validate(
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
+            image_embeddings = model.get_image_embeddings(images)
+
             prompt_ids_batch = batch["prompt_input_ids"].to(device, non_blocking=True)
             prompt_attention_batch = batch["prompt_attention_mask"].to(
                 device, non_blocking=True
             )
-
-            # current_batch_size = images.shape[0]
-            # prompt_ids_batch = prompt_ids.expand(current_batch_size, -1)
-            # prompt_attention_batch = prompt_attention.expand(current_batch_size, -1)
             prompt_length = prompt_ids_batch.shape[1]
 
             full_input_ids = torch.cat([prompt_ids_batch, target_ids[:, :-1]], dim=1)
@@ -100,11 +134,21 @@ def validate(
                 [prompt_attention_batch, target_attention_mask], dim=1
             )
 
+            contrastive_input_ids = batch["contrastive_input_ids"].to(
+                device, non_blocking=True
+            )
+            contrastive_text_embeddings = [
+                model.get_text_embeddings(input_ids)
+                for input_ids in contrastive_input_ids
+            ]
+
             with autocast(enabled=use_amp):
                 outputs = model(
-                    images, input_ids=full_input_ids, attention_mask=full_attention_mask
+                    image_embeddings=image_embeddings,
+                    input_ids=full_input_ids,
+                    attention_mask=full_attention_mask,
                 )
-                loss = compute_loss(
+                tf_loss = compute_teacher_forcing_loss(
                     outputs,
                     target_ids,
                     criterion,
@@ -112,6 +156,10 @@ def validate(
                     prompt_length=prompt_length,
                     pad_token_id=pad_token_id,
                 )
+                contrastive_loss = compute_contrastive_loss(
+                    image_embeddings, contrastive_text_embeddings
+                )
+                loss = tf_loss + contrastive_loss
 
             total_loss += loss.item()
             num_batches += 1
@@ -190,10 +238,40 @@ def main(job_id: int, config_name: str):
     logger.info(f"Total val batches: {len(val_dataloader)}")
     logger.info(f"Num workers: {num_workers}")
 
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=model_config.train_config.get("base_lr", 1e-4),
-        weight_decay=model_config.train_config.get("weight_decay", 0.04),
+    optimizer = torch.optim.AdamW(
+        [
+            {
+                "params": model.encoder.parameters(),
+                "lr": model_config.train_config.get("encoder_lr", 1e-6),
+            },
+            {
+                "params": model.projector.parameters(),
+                "lr": model_config.train_config.get("projector_lr", 1e-4),
+            },
+            {
+                "params": model.decoder.parameters(),
+                "lr": model_config.train_config.get("decoder_lr", 5e-5),
+            },
+        ],
+        weight_decay=model_config.train_config.get("weight_decay", 0.01),
+    )
+
+    warmup_scheduler = LinearLR(
+        optimizer,
+        start_factor=0.1,
+        end_factor=1.0,
+        total_iters=1000 // gradient_accumulation_steps,
+    )
+
+    constant_scheduler = LinearLR(
+        optimizer,
+        start_factor=1.0,
+        end_factor=1.0,
+        total_iters=1000000,
+    )
+
+    scheduler = SequentialLR(
+        optimizer, schedulers=[warmup_scheduler, constant_scheduler], milestones=[1000]
     )
 
     scaler = GradScaler()
@@ -211,12 +289,6 @@ def main(job_id: int, config_name: str):
     best_epoch = 0
 
     model_unwrapped = model.module if world_size > 1 else model
-    # prompt_tokens: tuple = data_loader_handler.get_objective_prompt_tokens(
-    #     model_unwrapped,  # type: ignore
-    #     device,
-    # )
-    # prompt_input_ids: torch.Tensor = prompt_tokens[0]
-    # prompt_attention_mask: torch.Tensor = prompt_tokens[1]
 
     for epoch in range(num_epochs):
         if world_size > 1:
@@ -234,9 +306,8 @@ def main(job_id: int, config_name: str):
             images = batch["image"].to(device, non_blocking=True)
             target_ids = batch["input_ids"].to(device, non_blocking=True)
 
-            # batch_size_current = images.shape[0]
-            # prompt_ids_batch = prompt_input_ids.expand(batch_size_current, -1)
-            # prompt_mask_batch = prompt_attention_mask.expand(batch_size_current, -1)
+            image_embeddings = model.get_image_embeddings(images)
+
             prompt_ids_batch = batch["prompt_input_ids"].to(device, non_blocking=True)
             prompt_mask_batch = batch["prompt_attention_mask"].to(
                 device, non_blocking=True
@@ -251,17 +322,30 @@ def main(job_id: int, config_name: str):
                 [prompt_mask_batch, target_attention_mask], dim=1
             )
 
+            contrastive_input_ids = batch["contrastive_input_ids"].to(
+                device, non_blocking=True
+            )
+            contrastive_text_embeddings = model.get_text_embeddings(
+                contrastive_input_ids
+            )
+
             with autocast(enabled=use_amp):
                 outputs = model(
-                    images, input_ids=full_input_ids, attention_mask=full_attention_mask
+                    image_embeddings=image_embeddings,
+                    input_ids=full_input_ids,
+                    attention_mask=full_attention_mask,
                 )
-                loss = compute_loss(
+                tf_loss = compute_teacher_forcing_loss(
                     outputs,
                     target_ids,
                     criterion,
                     num_image_tokens=513,
                     prompt_length=prompt_length,
                 )
+                contrastive_loss = compute_contrastive_loss(
+                    image_embeddings, contrastive_text_embeddings
+                )
+                loss = tf_loss + contrastive_loss
                 loss = loss / gradient_accumulation_steps
 
             if use_amp:
@@ -275,6 +359,7 @@ def main(job_id: int, config_name: str):
                     scaler.update()
                 else:
                     optimizer.step()
+                scheduler.step()
                 optimizer.zero_grad()
 
             total_train_loss += loss.item() * gradient_accumulation_steps
@@ -298,6 +383,38 @@ def main(job_id: int, config_name: str):
                     checkpoint_path,
                 )
                 logger.info(f"Saved checkpoint: {checkpoint_path}")
+
+            if batch_idx in (100, 1000, 10000):
+                count = 0
+                test_dataloader = data_loader_handler.get_val_dataloader()
+                check_prompt = "Generate a detailed radiologist's medical impression based on the findings from the attached head CT scan."
+                model.eval()
+                with torch.no_grad():
+                    for batch in test_dataloader:
+                        if batch is None:
+                            continue
+
+                        images = batch["image"].to(device, non_blocking=True)
+
+                        generated_ids = model.generate(
+                            images, prompt=check_prompt, max_new_tokens=256
+                        )
+
+                        generated_texts = model.decoder.tokenizer.batch_decode(
+                            generated_ids, skip_special_tokens=True
+                        )
+
+                        for gt_text, pred_text in zip(
+                            batch["objective"], generated_texts
+                        ):
+                            logger.info(f"Ground Truth: {gt_text}")
+                            logger.info(f"Prediction: {pred_text}")
+                            logger.info("-" * 40)
+
+                        count += 1
+                        if count > 10:
+                            break
+                model.train()
 
         avg_train_loss = total_train_loss / len(train_dataloader)
         epoch_time = datetime.now() - epoch_start_time

@@ -111,8 +111,18 @@ class HeadCTDataset(Dataset):
                 {
                     "image_item": {"image": row[self.image_path_col]},
                     "prompt": prompt_text,
+                    "objective_type": choice,
                     "objective": objective_text,
                     "accession_number": accession_number,
+                    "narrative": "FINDINGS: " + row["findings"]
+                    if row["findings"]
+                    else "",
+                    "impression": row["impression_deid_clean"]
+                    if row["impression_deid_clean"]
+                    else "",
+                    "conditions": "CONDITIONS: " + row["conditions"]
+                    if row["conditions"]
+                    else "",
                 }
             )
         return objectives
@@ -126,7 +136,7 @@ class HeadCTDataset(Dataset):
                 row["impression_deid_clean"],
             )
         elif choice == "narrative_generation":
-            return PROMPT_TEMPLATES["narrative_generation"], row["narrative_deid"]
+            return PROMPT_TEMPLATES["narrative_generation"], row["findings"]
         elif choice == "individual_condition_classification":
             condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
             return (
@@ -211,6 +221,7 @@ class HeadCTDataset(Dataset):
             image_tensor = torch.from_numpy(image_array)
 
         prompt_text = sample_data["prompt"]
+        objective_type = sample_data["objective_type"]
         objective_text = sample_data["objective"]
 
         if objective_text is None or (
@@ -221,8 +232,12 @@ class HeadCTDataset(Dataset):
         result = {
             "image": image_tensor,
             "prompt": prompt_text,
+            "objective_type": objective_type,
             "objective": objective_text,
             "accession_number": sample_data["accession_number"],
+            "impression": sample_data["impression"],
+            "narrative": sample_data["narrative"],
+            "conditions": sample_data["conditions"],
         }
 
         if self.tokenizer:
@@ -250,6 +265,18 @@ class HeadCTDataset(Dataset):
             )
             result["prompt_input_ids"] = prompt_tokens["input_ids"].squeeze(0)
             result["prompt_attention_mask"] = prompt_tokens["attention_mask"].squeeze(0)
+
+            if objective_type == "individual_condition_classification":
+                result["contrastive_input_ids"] = self.tokenizer(
+                    result["conditions"],
+                    return_tensors="pt",
+                    padding=False,
+                    truncation=True,
+                )["input_ids"].squeeze(0)
+            else:
+                result["contrastive_input_ids"] = self.tokenizer(
+                    objective_text, return_tensors="pt", padding=False, truncation=True
+                )["input_ids"].squeeze(0)
 
         return result
 
@@ -316,6 +343,12 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
             torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
         )
 
+    objective_types = [item["objective_type"] for item in batch]
+    narratives = [item["narrative"] for item in batch]
+    impressions = [item["impression"] for item in batch]
+    conditions = [item["conditions"] for item in batch]
+    contrastive_input_ids = [item["contrastive_input_ids"] for item in batch]
+
     return {
         "image": images,
         "objective": objectives,
@@ -323,7 +356,12 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         "attention_mask": torch.stack(padded_attention_masks),
         "prompt_input_ids": torch.stack(padded_prompt_input_ids),
         "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
+        "contrastive_input_ids": contrastive_input_ids,
         "accession_numbers": accession_numbers,
+        "narrative": narratives,
+        "impression": impressions,
+        "conditions": conditions,
+        "objective_type": objective_types,
     }
 
 

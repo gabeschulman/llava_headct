@@ -134,7 +134,7 @@ class ModelConfig:
             "gradient_accumulation_steps": 2,
             "max_epochs": 200,
             "base_lr": 5e-5,
-            "weight_decay": 0.04,
+            "weight_decay": 0.01,
             "use_amp": True,
         }
         for key, default_value in default_value_map.items():

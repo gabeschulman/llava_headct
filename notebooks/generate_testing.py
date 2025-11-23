@@ -54,10 +54,10 @@ data_loader_handler = DataLoaderHandler(
 
 test_dataloader = data_loader_handler.get_test_dataloader()
 
-(
-    prompt_input_ids,
-    prompt_attention_mask,
-) = data_loader_handler.get_objective_prompt_tokens(model, device)
+# (
+#     prompt_input_ids,
+#     prompt_attention_mask,
+# ) = data_loader_handler.get_objective_prompt_tokens(model, device)
 
 # Hard Coded for Now
 classification_prompt = "Generate a detailed radiologist's medical impression based on the findings from the attached head CT scan."

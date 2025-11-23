@@ -18,6 +18,8 @@ DATAFILES = {
     },
 }
 
+PRETRAINED_VIT_WEIGHTS: str = "/gpfs/scratch/gs4342/llava_headct/checkpoints/vit_pretrained/vit_base_patch12_96.pth"
+
 PROMPT_TEMPLATES: dict[str, str] = {
     "condition_classification": "List all medical conditions present: ",
     "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
@@ -25,7 +27,7 @@ PROMPT_TEMPLATES: dict[str, str] = {
     "individual_condition_classification": "For the following individual condition, indicate whether it is present ('Yes') or not ('No') based on the attached head CT scan: {condition}.",
 }
 
-OBJECTIVE_DICT = {
+OBJECTIVE_DICT: dict[str, float] = {
     "condition_classification": 0.3,
     "narrative_generation": 0.1,
     "impression_generation": 0.2,

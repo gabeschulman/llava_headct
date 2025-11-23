@@ -22,9 +22,12 @@ class LLaVAHeadCT(nn.Module):
         state_dict_path: Optional[str] = None,
         fine_tune_encoder: bool = False,
         fine_tune_encoder_blocks: int = 2,
-        use_pretrained_encoder_weights: bool = True,
     ):
         super().__init__()
+        use_pretrained_encoder_weights: bool = (
+            True if state_dict_path is None else False
+        )
+
         self.encoder = Encoder(
             weights_path=vision_encoder_weights,
             in_chans=vision_encoder_in_chans,
@@ -54,30 +57,73 @@ class LLaVAHeadCT(nn.Module):
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
             print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
-            print(f"  Train loss: {checkpoint.get('train_loss', 'N/A'):.4f}")
-            print(f"  Val loss: {checkpoint.get('val_loss', 'N/A'):.4f}")
+            train_loss = checkpoint.get("train_loss", "N/A")
+            if isinstance(train_loss, float):
+                print(f"  Train loss: {train_loss:.4f}")
+            val_loss = checkpoint.get("val_loss", "N/A")
+            if isinstance(val_loss, float):
+                print(f"  Val loss: {val_loss:.4f}")
         else:
             state_dict = checkpoint
 
         super().load_state_dict(state_dict, strict=strict)
 
-    def forward(
+    def get_text_embeddings(
         self,
-        image,
-        text: Optional[str] = None,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ):
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        """Get text embeddings from the decoder's embedding layer."""
+        return self.decoder.model.get_input_embeddings()(input_ids)
+
+    def get_image_embeddings(
+        self,
+        image: torch.Tensor,
+    ) -> torch.Tensor:
+        """Get image embeddings from the encoder and projector."""
         image_features, _ = self.encoder(image)
         batch_size, num_tokens, feature_dim = image_features.shape
         image_features_flat = image_features.view(-1, feature_dim)
-
         projected_features_flat = self.projector(image_features_flat)
         projected_image_features = projected_features_flat.view(
             batch_size, num_tokens, -1
         )
+        return projected_image_features
 
-        if text is not None or input_ids is not None:
+    def forward(
+        self,
+        image: Optional[torch.Tensor] = None,
+        image_embeddings: Optional[torch.Tensor] = None,
+        text_embeddings: Optional[torch.Tensor] = None,
+        text: Optional[str] = None,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ):
+        if image_embeddings is not None:
+            projected_image_features = image_embeddings
+        elif image is not None:
+            projected_image_features = self.get_image_embeddings(image)
+        else:
+            raise ValueError("Either image or image_embeddings must be provided.")
+
+        if text_embeddings is not None:
+            combined_embeds = torch.cat(
+                [projected_image_features, text_embeddings], dim=1
+            )
+            img_mask = torch.ones(
+                projected_image_features.shape[:2],
+                device=image.device,
+                dtype=torch.float32,
+            )
+            combined_attention_mask = torch.cat(
+                [
+                    img_mask,
+                    attention_mask
+                    if attention_mask is not None
+                    else torch.ones(text_embeddings.shape[:2], device=image.device),
+                ],
+                dim=1,
+            )
+        elif text is not None or input_ids is not None:
             if input_ids is not None:
                 text_input_ids = input_ids
                 text_attention_mask = (
@@ -92,7 +138,7 @@ class LLaVAHeadCT(nn.Module):
                 text_input_ids = text_tokens["input_ids"].to(image.device)
                 text_attention_mask = text_tokens["attention_mask"].to(image.device)
 
-            text_embeds = self.decoder.model.get_input_embeddings()(text_input_ids)
+            text_embeds = self.get_text_embeddings(text_input_ids)
 
             combined_embeds = torch.cat([projected_image_features, text_embeds], dim=1)
 
