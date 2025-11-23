@@ -26,6 +26,7 @@ logs/slurm_*
 
 # Jupyter
 .ipynb_checkpoints/
+test_nb.ipynb
 
 # System
 .DS_Store
