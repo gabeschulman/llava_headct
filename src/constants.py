@@ -19,7 +19,7 @@ DATAFILES = {
 }
 
 PROMPT_TEMPLATES: dict[str, str] = {
-    "condition_classification": "Describe the medical conditions observed in the attached head CT scan. Please list the conditions present in the following format: 'Conditions: condition 1, condition 2, ... condition N'. If no abnormalities are observed, please respond with 'Conditions: none.'",
+    "condition_classification": "List all medical conditions present: ",
     "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
     "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
     "individual_condition_classification": "For the following individual condition, indicate whether it is present ('Yes') or not ('No') based on the attached head CT scan: {condition}.",
@@ -31,6 +31,15 @@ OBJECTIVE_DICT = {
     "impression_generation": 0.2,
     "individual_condition_classification": 0.4,
     # "q_and_a": 0.1,
+}
+
+ABBREVIATED_CONDITIONS_DICT: dict = {
+    "IPH": "intraparenchymal hemorrhage",
+    "IVH": "intraventricular hemorrhage",
+    "SDH": "subdural hemorrhage",
+    "EDH": "epidural hemorrhage",
+    "SAH": "subarachnoid hemorrhage",
+    "ICH": "intracerebral hemorrhage",
 }
 
 INDIVIDUAL_CONDITIONS_LIST: List[str] = [

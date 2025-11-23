@@ -8,7 +8,12 @@ from monai import transforms
 from typing import List, Tuple, Optional
 from src.fm_ct.data.transforms import MultipleWindowScaleStack
 from transformers import AutoTokenizer
-from constants import PROMPT_TEMPLATES, OBJECTIVE_DICT, INDIVIDUAL_CONDITIONS_LIST
+from constants import (
+    PROMPT_TEMPLATES,
+    OBJECTIVE_DICT,
+    INDIVIDUAL_CONDITIONS_LIST,
+    ABBREVIATED_CONDITIONS_DICT,
+)
 
 
 class HeadCTDataset(Dataset):
@@ -25,7 +30,6 @@ class HeadCTDataset(Dataset):
     def __init__(
         self,
         image_file_location: str,
-        # objective_column: str,
         use_cached_images: bool = True,
         tokenizer_model_name: Optional[str] = None,
         max_text_length: int = 512,
@@ -52,16 +56,13 @@ class HeadCTDataset(Dataset):
             allow_missing_keys: Whether to allow missing keys in transforms
         """
         np.random.seed(numpy_seed)
-        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location)
-        # self.image_df = self.image_df.filter(
-        #     pl.col(objective_column).is_not_null()
-        #     & (pl.col(objective_column).str.len_chars() > 0)
-        # )
+        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).sample(
+            fraction=1.0, shuffle=True, seed=42
+        )
 
         self.image_path_col: str = (
             "img_path" if not use_cached_images else "cached_path"
         )
-        # self.image_paths: List[str] = self.image_df[image_path_col].to_list()
 
         self.roi: Tuple[int, int, int] = roi
         self.window_sizes: List[Tuple[int, int]] = window_sizes
@@ -72,12 +73,6 @@ class HeadCTDataset(Dataset):
         if tokenizer_model_name:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model_name)
             self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-
-        # # Create the data list in MONAI format
-        # self.data: List[dict] = [
-        #     {"image_item": {"image": path}, "objective": obj}
-        #     for path, obj in zip(self.image_paths, self.objective_text)
-        # ]
 
         # Initialize transforms - only needed if not using cached images (preferred)
         self.transforms = None
@@ -136,7 +131,7 @@ class HeadCTDataset(Dataset):
             condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
             return (
                 PROMPT_TEMPLATES["individual_condition_classification"].format(
-                    condition=condition
+                    condition=ABBREVIATED_CONDITIONS_DICT.get(condition, condition)
                 ),
                 "Yes" if row[condition] == 1 else "No",
             )
@@ -265,9 +260,22 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
     Filters out images with incorrect shapes (e.g., 6 channels instead of 3).
     """
     expected_shape = (3, 96, 96, 96)
-    batch = [item for item in batch if item["image"].shape == expected_shape]
+    seen_accession_numbers = set()
 
-    if len(batch) == 0:
+    batch_clean = []
+    for item in batch:
+        accession_number = item["accession_number"]
+        if (
+            accession_number in seen_accession_numbers
+            or item["image"].shape != expected_shape
+        ):
+            continue
+        seen_accession_numbers.add(accession_number)
+        batch_clean.append(item)
+
+    batch = batch_clean
+    del batch_clean
+    if len(batch) < 2:
         return None
 
     images = torch.stack([item["image"] for item in batch])
