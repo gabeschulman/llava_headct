@@ -8,7 +8,7 @@ from monai import transforms
 from typing import List, Tuple, Optional
 from src.fm_ct.data.transforms import MultipleWindowScaleStack
 from transformers import AutoTokenizer
-from constants import (
+from src.constants import (
     PROMPT_TEMPLATES,
     OBJECTIVE_DICT,
     INDIVIDUAL_CONDITIONS_LIST,
