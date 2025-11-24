@@ -114,9 +114,7 @@ class HeadCTDataset(Dataset):
                     "objective_type": choice,
                     "objective": objective_text,
                     "accession_number": accession_number,
-                    "narrative": "FINDINGS: " + row["findings"]
-                    if row["findings"]
-                    else "",
+                    "narrative": row["findings"] if row["findings"] else "",
                     "impression": row["impression_deid_clean"]
                     if row["impression_deid_clean"]
                     else "",
@@ -127,9 +125,12 @@ class HeadCTDataset(Dataset):
             )
         return objectives
 
-    def map_choice_to_objective(self, row: str, choice: str) -> tuple:
+    def map_choice_to_objective(self, row: dict, choice: str) -> tuple:
         if choice == "condition_classification":
-            return PROMPT_TEMPLATES["condition_classification"], row["conditions"]
+            return (
+                PROMPT_TEMPLATES["condition_classification"],
+                "CONDITIONS: " + row["conditions"],
+            )
         elif choice == "impression_generation":
             return (
                 PROMPT_TEMPLATES["impression_generation"],
@@ -229,62 +230,31 @@ class HeadCTDataset(Dataset):
         ):
             objective_text = ""
 
+        if objective_type == "individual_condition_classification":
+            contrastive_text = sample_data["conditions"]
+        else:
+            contrastive_text = objective_text
+
         result = {
             "image": image_tensor,
             "prompt": prompt_text,
             "objective_type": objective_type,
             "objective": objective_text,
+            "contrastive_text": contrastive_text,
             "accession_number": sample_data["accession_number"],
             "impression": sample_data["impression"],
             "narrative": sample_data["narrative"],
             "conditions": sample_data["conditions"],
         }
 
-        if self.tokenizer:
-            tokenized = self.tokenizer(
-                objective_text,
-                return_tensors="pt",
-                padding=False,
-                truncation=True,
-                max_length=self.max_text_length,
-            )
-            result["input_ids"] = tokenized["input_ids"].squeeze(0)
-            result["input_ids"] = torch.cat(
-                [result["input_ids"], torch.tensor([self.tokenizer.eos_token_id])]
-            )
-            result["attention_mask"] = tokenized["attention_mask"].squeeze(0)
-            result["attention_mask"] = torch.cat(
-                [result["attention_mask"], torch.tensor([1])]
-            )
-
-            prompt_tokens: dict[str, torch.Tensor] = self.tokenizer(
-                prompt_text,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-            )
-            result["prompt_input_ids"] = prompt_tokens["input_ids"].squeeze(0)
-            result["prompt_attention_mask"] = prompt_tokens["attention_mask"].squeeze(0)
-
-            if objective_type == "individual_condition_classification":
-                result["contrastive_input_ids"] = self.tokenizer(
-                    result["conditions"],
-                    return_tensors="pt",
-                    padding=False,
-                    truncation=True,
-                )["input_ids"].squeeze(0)
-            else:
-                result["contrastive_input_ids"] = self.tokenizer(
-                    objective_text, return_tensors="pt", padding=False, truncation=True
-                )["input_ids"].squeeze(0)
-
         return result
 
 
-def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
+def collate_fn_dynamic_padding(batch, padding_token_id: int, tokenizer):
     """
     Custom collate function that pads sequences dynamically to the longest in the batch.
-    Filters out images with incorrect shapes (e.g., 6 channels instead of 3).
+    Filters out images with incorrect shapes and duplicate accessions.
+    Handles all tokenization in main process.
     """
     expected_shape = (3, 96, 96, 96)
     seen_accession_numbers = set()
@@ -300,30 +270,66 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         seen_accession_numbers.add(accession_number)
         batch_clean.append(item)
 
-    batch = batch_clean
-    del batch_clean
-    if len(batch) < 2:
+    if len(batch_clean) < 2:
         return None
 
+    batch = batch_clean
+
     images = torch.stack([item["image"] for item in batch])
+
     objectives = [item["objective"] for item in batch]
+    prompts = [item["prompt"] for item in batch]
+    contrastive_texts = [item["contrastive_text"] for item in batch]
 
-    input_ids = [item["input_ids"] for item in batch]
-    attention_masks = [item["attention_mask"] for item in batch]
+    tokenized_objectives = []
+    objective_attention_masks = []
 
-    prompt_input_ids = [item["prompt_input_ids"] for item in batch]
-    prompt_attention_masks = [item["prompt_attention_mask"] for item in batch]
+    for obj_text in objectives:
+        tokens = tokenizer(
+            obj_text,
+            return_tensors="pt",
+            padding=False,
+            truncation=True,
+            max_length=512,
+        )
+        input_ids = torch.cat(
+            [tokens["input_ids"].squeeze(0), torch.tensor([tokenizer.eos_token_id])]
+        )
+        attention_mask = torch.cat(
+            [tokens["attention_mask"].squeeze(0), torch.tensor([1])]
+        )
+        tokenized_objectives.append(input_ids)
+        objective_attention_masks.append(attention_mask)
 
-    accession_numbers = [item["accession_number"] for item in batch]
+    tokenized_prompts = []
+    prompt_attention_masks = []
 
-    max_len = max(len(ids) for ids in input_ids)
-    max_prompt_len = max(len(ids) for ids in prompt_input_ids)
+    for prompt_text in prompts:
+        tokens = tokenizer(
+            prompt_text,
+            return_tensors="pt",
+            padding=False,
+            truncation=True,
+        )
+        tokenized_prompts.append(tokens["input_ids"].squeeze(0))
+        prompt_attention_masks.append(tokens["attention_mask"].squeeze(0))
 
+    contrastive_input_ids = []
+    for cont_text in contrastive_texts:
+        tokens = tokenizer(
+            cont_text,
+            return_tensors="pt",
+            padding=False,
+            truncation=True,
+        )
+        contrastive_input_ids.append(tokens["input_ids"].squeeze(0))
+
+    max_obj_len = max(len(ids) for ids in tokenized_objectives)
     padded_input_ids = []
     padded_attention_masks = []
 
-    for ids, mask in zip(input_ids, attention_masks):
-        padding_length = max_len - len(ids)
+    for ids, mask in zip(tokenized_objectives, objective_attention_masks):
+        padding_length = max_obj_len - len(ids)
         padded_input_ids.append(
             torch.cat([ids, torch.tensor([padding_token_id]).repeat(padding_length)])
         )
@@ -331,10 +337,11 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
             torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
         )
 
+    max_prompt_len = max(len(ids) for ids in tokenized_prompts)
     padded_prompt_input_ids = []
     padded_prompt_attention_masks = []
 
-    for ids, mask in zip(prompt_input_ids, prompt_attention_masks):
+    for ids, mask in zip(tokenized_prompts, prompt_attention_masks):
         padding_length = max_prompt_len - len(ids)
         padded_prompt_input_ids.append(
             torch.cat([ids, torch.tensor([padding_token_id]).repeat(padding_length)])
@@ -344,10 +351,10 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         )
 
     objective_types = [item["objective_type"] for item in batch]
+    accession_numbers = [item["accession_number"] for item in batch]
     narratives = [item["narrative"] for item in batch]
     impressions = [item["impression"] for item in batch]
     conditions = [item["conditions"] for item in batch]
-    contrastive_input_ids = [item["contrastive_input_ids"] for item in batch]
 
     return {
         "image": images,
@@ -356,7 +363,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int = 0):
         "attention_mask": torch.stack(padded_attention_masks),
         "prompt_input_ids": torch.stack(padded_prompt_input_ids),
         "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
-        "contrastive_input_ids": contrastive_input_ids,
+        "contrastive_input_ids": contrastive_input_ids,  # (variable length)
         "accession_numbers": accession_numbers,
         "narrative": narratives,
         "impression": impressions,
@@ -429,7 +436,9 @@ def create_head_ct_dataloader(
         shuffle=shuffle if sampler is None else False,
         persistent_workers=persistent_workers,
         collate_fn=partial(
-            collate_fn_dynamic_padding, padding_token_id=dataset.tokenizer.pad_token_id
+            collate_fn_dynamic_padding,
+            padding_token_id=dataset.tokenizer.pad_token_id,
+            tokenizer=dataset.tokenizer,
         )
         if dataset.tokenizer
         else None,

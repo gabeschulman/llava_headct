@@ -62,13 +62,17 @@ def compute_teacher_forcing_loss(
     return loss
 
 
-def compute_contrastive_loss(image_embeddings, text_embeddings, temperature=0.07):
+def compute_contrastive_loss(
+    image_embeddings: torch.Tensor,
+    text_embeddings: list[torch.Tensor],
+    temperature=0.07,
+):
     """
     Compute contrastive loss between image and text embeddings.
 
     Args:
         image_embeddings: Image embeddings tensor of shape [batch_size, embed_dim]
-        text_embeddings: Text embeddings tensor of shape [batch_size, embed_dim]
+        text_embeddings: List of text embeddings tensors, each of shape [n_tokens, embed_dim]
         temperature: Scaling factor for logits (default is value for CLIP)
     Returns:
         loss: Computed contrastive loss
@@ -77,7 +81,7 @@ def compute_contrastive_loss(image_embeddings, text_embeddings, temperature=0.07
 
     # Take embedding means
     image_embeddings = image_embeddings.mean(dim=1)
-    text_embeddings = text_embeddings.mean(dim=1)
+    text_embeddings = torch.stack([te.mean(dim=0) for te in text_embeddings])
 
     # Normalize embeddings
     image_embeddings = nn.functional.normalize(image_embeddings, p=2, dim=1)
@@ -134,11 +138,9 @@ def validate(
                 [prompt_attention_batch, target_attention_mask], dim=1
             )
 
-            contrastive_input_ids = batch["contrastive_input_ids"].to(
-                device, non_blocking=True
-            )
+            contrastive_input_ids = batch["contrastive_input_ids"]
             contrastive_text_embeddings = [
-                model.get_text_embeddings(input_ids)
+                model.get_text_embeddings(input_ids.to(device, non_blocking=True))
                 for input_ids in contrastive_input_ids
             ]
 
@@ -322,12 +324,11 @@ def main(job_id: int, config_name: str):
                 [prompt_mask_batch, target_attention_mask], dim=1
             )
 
-            contrastive_input_ids = batch["contrastive_input_ids"].to(
-                device, non_blocking=True
-            )
-            contrastive_text_embeddings = model.get_text_embeddings(
-                contrastive_input_ids
-            )
+            contrastive_input_ids = batch["contrastive_input_ids"]
+            contrastive_text_embeddings = [
+                model.get_text_embeddings(input_ids.to(device, non_blocking=True))
+                for input_ids in contrastive_input_ids
+            ]
 
             with autocast(enabled=use_amp):
                 outputs = model(
@@ -412,7 +413,7 @@ def main(job_id: int, config_name: str):
                             logger.info("-" * 40)
 
                         count += 1
-                        if count > 10:
+                        if count > 5:
                             break
                 model.train()
 
