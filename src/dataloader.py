@@ -2,7 +2,7 @@ from functools import partial
 import polars as pl
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from monai import transforms
 from typing import List, Tuple, Optional
@@ -74,6 +74,8 @@ class HeadCTDataset(Dataset):
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model_name)
             self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
+        self.sample_weights = []
+
         # Initialize transforms - only needed if not using cached images (preferred)
         self.transforms = None
         if not use_cached_images:
@@ -121,8 +123,10 @@ class HeadCTDataset(Dataset):
                     "conditions": "CONDITIONS: " + row["conditions"]
                     if row["conditions"]
                     else "",
+                    "has_abnormality": row["has_abnormality"],
                 }
             )
+            self.sample_weights.append(row["sample_weight"])
         return objectives
 
     def map_choice_to_objective(self, row: dict, choice: str) -> tuple:
@@ -245,6 +249,7 @@ class HeadCTDataset(Dataset):
             "impression": sample_data["impression"],
             "narrative": sample_data["narrative"],
             "conditions": sample_data["conditions"],
+            "has_abnormality": sample_data["has_abnormality"],
         }
 
         return result
@@ -355,6 +360,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int, tokenizer):
     narratives = [item["narrative"] for item in batch]
     impressions = [item["impression"] for item in batch]
     conditions = [item["conditions"] for item in batch]
+    has_abnormalities = [item["has_abnormality"] for item in batch]
 
     return {
         "image": images,
@@ -369,6 +375,7 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int, tokenizer):
         "impression": impressions,
         "conditions": conditions,
         "objective_type": objective_types,
+        "has_abnormality": has_abnormalities,
     }
 
 
@@ -417,7 +424,11 @@ def create_head_ct_dataloader(
         **dataset_kwargs,
     )
 
-    sampler = None
+    sampler = WeightedRandomSampler(
+        weights=dataset.sample_weights,
+        num_samples=len(dataset),
+        replacement=True,
+    )
     if world_size > 1:
         sampler = DistributedSampler(
             dataset,
