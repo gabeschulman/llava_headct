@@ -12,16 +12,15 @@ class LLaVAHeadCT(nn.Module):
         vision_encoder_in_chans: int,
         vision_encoder_img_size: Sequence[int] | int,
         vision_encoder_patch_size: Sequence[int] | int,
-        projector_input_channels: int,
-        projector_inner_channels: int,
-        projector_out_channels: int,
+        input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
         decoder_model_name: str,
-        projector_dropout: float = 0.0,
         learning_rate: float = 1e-4,
         weight_decay: float = 0.01,
         state_dict_path: Optional[str] = None,
         fine_tune_encoder: bool = False,
-        fine_tune_encoder_blocks: int = 2,
+        fine_tune_encoder_blocks: int = 3,
     ):
         super().__init__()
         use_pretrained_encoder_weights: bool = (
@@ -39,10 +38,9 @@ class LLaVAHeadCT(nn.Module):
         )
 
         self.projector = Projector(
-            input_channels=projector_input_channels,
-            inner_channels=projector_inner_channels,
-            out_channels=projector_out_channels,
-            dropout=projector_dropout,
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
         )
 
         self.decoder = Decoder(model_name=decoder_model_name)
@@ -80,7 +78,15 @@ class LLaVAHeadCT(nn.Module):
         image: torch.Tensor,
     ) -> torch.Tensor:
         """Get image embeddings from the encoder and projector."""
-        image_features, _ = self.encoder(image)
+        full_image_features, _ = self.encoder(image)
+        cls_token = full_image_features[:, 0:1, :]  # Use only the CLS token
+        spatial_tokens = nn.functional.adaptive_avg_pool1d(
+            full_image_features[:, 1:, :].transpose(1, 2),
+            output_size=128,  # 128 spatial tokens
+        ).transpose(1, 2)
+
+        image_features = torch.cat([cls_token, spatial_tokens], dim=1)
+
         batch_size, num_tokens, feature_dim = image_features.shape
         image_features_flat = image_features.view(-1, feature_dim)
         projected_features_flat = self.projector(image_features_flat)
@@ -165,6 +171,7 @@ class LLaVAHeadCT(nn.Module):
         self,
         image,
         prompt: Optional[str] = None,
+        min_new_tokens: int = 1,
         max_new_tokens: int = 512,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -189,13 +196,14 @@ class LLaVAHeadCT(nn.Module):
 
         self.eval()
         with torch.no_grad():
-            image_features, _ = self.encoder(image)
-            batch_size, num_tokens, feature_dim = image_features.shape
-            image_features_flat = image_features.view(-1, feature_dim)
-            projected_features_flat = self.projector(image_features_flat)
-            projected_image_features = projected_features_flat.view(
-                batch_size, num_tokens, -1
-            )
+            # image_features, _ = self.encoder(image)
+            # batch_size, num_tokens, feature_dim = image_features.shape
+            # image_features_flat = image_features.view(-1, feature_dim)
+            # projected_features_flat = self.projector(image_features_flat)
+            # projected_image_features = projected_features_flat.view(
+            #     batch_size, num_tokens, -1
+            # )
+            projected_image_features = self.get_image_embeddings(image)
 
             if prompt is not None:
                 if isinstance(prompt, str):
@@ -228,6 +236,7 @@ class LLaVAHeadCT(nn.Module):
             generated_ids = self.decoder.generate(
                 input_embeds=combined_embeds,
                 attention_mask=combined_attention_mask,
+                min_new_tokens=min_new_tokens,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 top_p=top_p,

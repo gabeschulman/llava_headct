@@ -3,10 +3,9 @@
         "decoder_model_name": "Qwen/Qwen2.5-0.5B"
     },
     "projector": {
-        "projector_input_channels": 768,
-        "projector_inner_channels": 832,
-        "projector_out_channels": 896,
-        "projector_dropout": 0.1
+        "input_dim": 768,
+        "hidden_dim": 2048,
+        "output_dim": 896
     },
     "encoder": {
         "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",

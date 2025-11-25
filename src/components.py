@@ -15,7 +15,7 @@ class Encoder(ViT):
         patch_size: Sequence[int] | int = 12,
         use_pretrained_weights: bool = True,
         fine_tune: bool = False,
-        fine_tune_blocks: int = 2,
+        fine_tune_blocks: int = 3,
         **kwargs,
     ):
         super().__init__(
@@ -57,20 +57,26 @@ class Encoder(ViT):
 
 
 class Projector(nn.Module):
-    def __init__(self, input_channels, inner_channels, out_channels, dropout=0.0):
+    def __init__(self, input_dim=768, hidden_dim=2048, output_dim=896, num_layers=3):
         super().__init__()
-        self.pre_norm = nn.LayerNorm(input_channels)
 
-        self.proj = nn.Sequential(
-            nn.Linear(input_channels, inner_channels),
-            nn.GELU(),
-            nn.Linear(inner_channels, out_channels),
-        )
-        self.dropout = nn.Dropout(dropout)
+        layers = []
+        layers.append(nn.LayerNorm(input_dim))
+
+        layers.append(nn.Linear(input_dim, hidden_dim))
+        layers.append(nn.GELU())
+
+        for _ in range(num_layers - 2):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            layers.append(nn.GELU())
+            layers.append(nn.LayerNorm(hidden_dim))  # Add layer norm between
+
+        layers.append(nn.Linear(hidden_dim, output_dim))
+
+        self.proj = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.pre_norm(x)
-        return self.dropout(self.proj(x))
+        return self.proj(x)
 
 
 class Decoder(nn.Module):

@@ -21,19 +21,41 @@ DATAFILES = {
 PRETRAINED_VIT_WEIGHTS: str = "/gpfs/scratch/gs4342/llava_headct/checkpoints/vit_pretrained/vit_base_patch12_96.pth"
 
 PROMPT_TEMPLATES: dict[str, str] = {
-    "condition_classification": "List all medical conditions present. ",
-    "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.",
-    "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.",
-    "individual_condition_classification": "For the following individual condition, indicate whether it is present ('Yes') or not ('No') based on the attached head CT scan: {condition}.",
+    "narrative_generation": "Generate a detailed radiologist's medical narrative based on the findings from the attached head CT scan.\n\n",
+    "impression_generation": "Provide a concise radiologist's medical impression based on the findings from the attached head CT scan.\n\n",
+    "condition_classification": "List all medical conditions present. Format your response as: CONDITIONS: [list] or CONDITIONS: none\n\nCONDITIONS:",
+    "individual_condition_classification": "For the following individual condition, indicate whether it is present ('Yes') or absent ('No'): {condition}. Respond with only: Yes or No\n\nANSWER:",
 }
 
-OBJECTIVE_DICT: dict[str, float] = {
-    "condition_classification": 0.3,
-    "narrative_generation": 0.1,
-    "impression_generation": 0.2,
-    "individual_condition_classification": 0.4,
-    # "q_and_a": 0.1,
+# Phase 1
+OBJECTIVE_DICT = {
+    "narrative_generation": 0.025,
+    "condition_classification": 0.7,
+    "individual_condition_classification": 0.275,
+    "impression_generation": 0.0,
 }
+
+OBJECTIVE_SCALES = {
+    "condition_classification": 3.0,
+    "individual_condition_classification": 2.0,
+    "narrative_generation": 1.0,
+    "impression_generation": 0.25,
+}
+
+# Phase 2
+# OBJECTIVE_SCALES = {
+#     'narrative_generation': 1.0,
+#     'condition_classification': 7.0,
+#     'individual_condition_classification': 5.0,
+#     'impression_generation': 0.25,
+# }
+
+# OBJECTIVE_DICT = {
+#     'narrative_generation': 0.30,
+#     'condition_classification': 0.40,
+#     'individual_condition_classification': 0.30,
+#     'impression_generation': 0.00,
+# }
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
     "IPH": "intraparenchymal hemorrhage",

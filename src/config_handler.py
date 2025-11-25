@@ -66,9 +66,9 @@ class ModelConfig:
             raise KeyError("Projector configuration not found in config file.")
         projector_config: Dict[str, Any] = self.config["projector"]
         required_keys = [
-            "projector_input_channels",
-            "projector_inner_channels",
-            "projector_out_channels",
+            "input_dim",
+            "hidden_dim",
+            "output_dim",
         ]
         missing_keys = [key for key in required_keys if key not in projector_config]
         if missing_keys:
@@ -78,9 +78,6 @@ class ModelConfig:
         ]
         if mistyped_keys:
             raise TypeError(f"Projector config keys must be integers: {mistyped_keys}")
-        projector_config["projector_dropout"] = projector_config.get(
-            "projector_dropout", 0.1
-        )
         return projector_config
 
     def load_decoder_config(self) -> Dict[str, Any]:

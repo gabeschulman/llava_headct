@@ -2,7 +2,7 @@ from functools import partial
 import polars as pl
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from monai import transforms
 from typing import List, Tuple, Optional
@@ -11,6 +11,7 @@ from transformers import AutoTokenizer
 from src.constants import (
     PROMPT_TEMPLATES,
     OBJECTIVE_DICT,
+    OBJECTIVE_SCALES,
     INDIVIDUAL_CONDITIONS_LIST,
     ABBREVIATED_CONDITIONS_DICT,
 )
@@ -40,6 +41,7 @@ class HeadCTDataset(Dataset):
         mode: int = 3,
         allow_missing_keys: bool = True,
         numpy_seed: int = 1,
+        objective_dict: dict = OBJECTIVE_DICT,
     ):
         """
         Initialize the dataset.
@@ -59,7 +61,9 @@ class HeadCTDataset(Dataset):
         self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).sample(
             fraction=1.0, shuffle=True, seed=42
         )
+        self._data_rows = self.image_df.to_dicts()
 
+        self.objective_dict = objective_dict
         self.image_path_col: str = (
             "img_path" if not use_cached_images else "cached_path"
         )
@@ -83,57 +87,64 @@ class HeadCTDataset(Dataset):
                 roi, window_sizes, pixdim, axcodes, mode, allow_missing_keys
             )
 
+    def update_objective_dict(self, new_objective_dict: dict):
+        """Update the objective dictionary."""
+        self.objective_dict = new_objective_dict
+
     @property
     def objectives(self) -> List[str]:
         """Get the list of objectives."""
-        return list(OBJECTIVE_DICT.keys())
+        return list(self.objective_dict.keys())
 
     @property
     def objective_probabilities(self) -> List[float]:
         """Get the objective probabilities dictionary."""
-        return list(OBJECTIVE_DICT.values())
+        return list(self.objective_dict.values())
 
     @property
     def number_of_objectives(self) -> int:
         """Get the number of objectives."""
-        return len(OBJECTIVE_DICT)
+        return len(self.objective_dict)
 
-    @property
-    def data(self) -> dict:
-        objectives = []
-        for row in self.image_df.iter_rows(named=True):
-            choice = np.random.choice(self.objectives, p=self.objective_probabilities)
-            prompt_text, objective_text = self.map_choice_to_objective(row, choice)
-            if objective_text is None or (
-                isinstance(objective_text, str) and len(objective_text.strip()) == 0
-            ):
-                continue
-            accession_number = row["accession_num"]
-            objectives.append(
-                {
-                    "image_item": {"image": row[self.image_path_col]},
-                    "prompt": prompt_text,
-                    "objective_type": choice,
-                    "objective": objective_text,
-                    "accession_number": accession_number,
-                    "narrative": row["findings"] if row["findings"] else "",
-                    "impression": row["impression_deid_clean"]
-                    if row["impression_deid_clean"]
-                    else "",
-                    "conditions": "CONDITIONS: " + row["conditions"]
-                    if row["conditions"]
-                    else "",
-                    "has_abnormality": row["has_abnormality"],
-                }
-            )
-            self.sample_weights.append(row["sample_weight"])
-        return objectives
+    def _choose_valid_objective(self, row):
+        valid_objectives = []
+        valid_probs = []
+
+        for obj, prob in zip(self.objectives, self.objective_probabilities):
+            is_valid = False
+
+            if obj == "impression_generation":
+                is_valid = (
+                    row.get("impression_deid_clean")
+                    and len(str(row["impression_deid_clean"]).strip()) > 0
+                )
+            elif obj == "narrative_generation":
+                is_valid = row.get("findings") and len(str(row["findings"]).strip()) > 0
+            elif obj == "condition_classification":
+                is_valid = (
+                    row.get("conditions") and len(str(row["conditions"]).strip()) > 0
+                )
+            elif obj == "individual_condition_classification":
+                is_valid = True
+
+            if is_valid:
+                valid_objectives.append(obj)
+                valid_probs.append(prob)
+
+        if valid_objectives:
+            total = sum(valid_probs)
+            valid_probs = [p / total for p in valid_probs]
+        else:
+            valid_objectives = ["individual_condition_classification"]
+            valid_probs = [1.0]
+
+        return np.random.choice(valid_objectives, p=valid_probs)
 
     def map_choice_to_objective(self, row: dict, choice: str) -> tuple:
         if choice == "condition_classification":
             return (
                 PROMPT_TEMPLATES["condition_classification"],
-                "CONDITIONS: " + row["conditions"],
+                row["conditions"],
             )
         elif choice == "impression_generation":
             return (
@@ -143,7 +154,13 @@ class HeadCTDataset(Dataset):
         elif choice == "narrative_generation":
             return PROMPT_TEMPLATES["narrative_generation"], row["findings"]
         elif choice == "individual_condition_classification":
-            condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
+            conditions_present = [
+                c for c in INDIVIDUAL_CONDITIONS_LIST if row.get(c) == 1
+            ]
+            if conditions_present and np.random.random() < 0.5:
+                condition = np.random.choice(conditions_present)
+            else:
+                condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
             return (
                 PROMPT_TEMPLATES["individual_condition_classification"].format(
                     condition=ABBREVIATED_CONDITIONS_DICT.get(condition, condition)
@@ -211,28 +228,24 @@ class HeadCTDataset(Dataset):
         return transforms.Compose(transform_list)
 
     def __len__(self) -> int:
-        return len(self.data)
+        return len(self._data_rows)
 
     def __getitem__(self, idx: int) -> dict:
-        sample_data = self.data[idx].copy()
+        sample_data = self._data_rows[idx].copy()
+
+        objective_type = self._choose_valid_objective(row=sample_data)
+        prompt_text, objective_text = self.map_choice_to_objective(
+            sample_data, objective_type
+        )
 
         if self.transforms:
-            sample_image = sample_data["image_item"]
+            sample_image = {"image": sample_data[self.image_path_col]}
             transformed_sample = self.transforms(sample_image)
             image_tensor = transformed_sample["image"]
         else:
-            cached_path = sample_data["image_item"]["image"]
+            cached_path = sample_data[self.image_path_col]
             image_array = np.load(cached_path)
             image_tensor = torch.from_numpy(image_array)
-
-        prompt_text = sample_data["prompt"]
-        objective_type = sample_data["objective_type"]
-        objective_text = sample_data["objective"]
-
-        if objective_text is None or (
-            isinstance(objective_text, str) and len(objective_text.strip()) == 0
-        ):
-            objective_text = ""
 
         if objective_type == "individual_condition_classification":
             contrastive_text = sample_data["conditions"]
@@ -245,11 +258,17 @@ class HeadCTDataset(Dataset):
             "objective_type": objective_type,
             "objective": objective_text,
             "contrastive_text": contrastive_text,
-            "accession_number": sample_data["accession_number"],
-            "impression": sample_data["impression"],
-            "narrative": sample_data["narrative"],
-            "conditions": sample_data["conditions"],
+            "accession_number": sample_data["accession_num"],
+            "impression": sample_data["impression_deid_clean"]
+            if sample_data["impression_deid_clean"]
+            else "",
+            "narrative": sample_data["findings"] if sample_data["findings"] else "",
+            "conditions": sample_data["conditions"]
+            if sample_data["conditions"]
+            else "",
             "has_abnormality": sample_data["has_abnormality"],
+            "objective_scale": OBJECTIVE_SCALES[objective_type],
+            "sample_weight": sample_data["sample_weight"],
         }
 
         return result
@@ -355,12 +374,15 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int, tokenizer):
             torch.cat([mask, torch.zeros(padding_length, dtype=mask.dtype)])
         )
 
+    prompts = [item["prompt"] for item in batch]
     objective_types = [item["objective_type"] for item in batch]
     accession_numbers = [item["accession_number"] for item in batch]
     narratives = [item["narrative"] for item in batch]
     impressions = [item["impression"] for item in batch]
     conditions = [item["conditions"] for item in batch]
     has_abnormalities = [item["has_abnormality"] for item in batch]
+    sample_weights = [item["sample_weight"] for item in batch]
+    objective_scales = [item["objective_scale"] for item in batch]
 
     return {
         "image": images,
@@ -370,12 +392,15 @@ def collate_fn_dynamic_padding(batch, padding_token_id: int, tokenizer):
         "prompt_input_ids": torch.stack(padded_prompt_input_ids),
         "prompt_attention_mask": torch.stack(padded_prompt_attention_masks),
         "contrastive_input_ids": contrastive_input_ids,  # (variable length)
+        "prompt": prompts,
         "accession_numbers": accession_numbers,
         "narrative": narratives,
         "impression": impressions,
         "conditions": conditions,
         "objective_type": objective_types,
         "has_abnormality": has_abnormalities,
+        "sample_weights": torch.tensor(sample_weights, dtype=torch.float32),
+        "objective_scales": torch.tensor(objective_scales, dtype=torch.float32),
     }
 
 
@@ -424,11 +449,7 @@ def create_head_ct_dataloader(
         **dataset_kwargs,
     )
 
-    sampler = WeightedRandomSampler(
-        weights=dataset.sample_weights,
-        num_samples=len(dataset),
-        replacement=True,
-    )
+    sampler = None
     if world_size > 1:
         sampler = DistributedSampler(
             dataset,

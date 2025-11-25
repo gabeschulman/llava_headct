@@ -20,10 +20,10 @@ def is_main_process():
 def compute_teacher_forcing_loss(
     outputs,
     target_ids,
-    criterion,
     num_image_tokens=513,
     prompt_length=0,
     pad_token_id=-100,
+    reduction="mean",
 ):
     """
     Compute the cross-entropy loss for text generation with teacher forcing.
@@ -54,18 +54,28 @@ def compute_teacher_forcing_loss(
     )
 
     vocab_size = logits_for_targets.size(-1)
+    batch_size = logits_for_targets.size(0)
+    seq_len = logits_for_targets.size(1)
 
-    loss = criterion(logits_for_targets.view(-1, vocab_size), labels.view(-1))
-
-    del logits_for_targets, labels
-
-    return loss
+    criterion_per_token = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
+    loss_per_token = criterion_per_token(
+        logits_for_targets.view(-1, vocab_size), labels.view(-1)
+    )
+    if reduction == "none":
+        loss_per_token = loss_per_token.view(batch_size, seq_len)
+        valid_mask = (labels != -100).float()
+        valid_counts = valid_mask.sum(dim=1).clamp(min=1)
+        loss_per_sample = (loss_per_token * valid_mask).sum(dim=1) / valid_counts
+        return loss_per_sample
+    else:
+        return loss_per_token.mean()
 
 
 def compute_contrastive_loss(
     image_embeddings: torch.Tensor,
     text_embeddings: list[torch.Tensor],
     temperature=0.07,
+    reduction="mean",
 ):
     """
     Compute contrastive loss between image and text embeddings.
@@ -92,7 +102,7 @@ def compute_contrastive_loss(
 
     labels = torch.arange(batch_size).to(image_embeddings.device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(reduction=reduction)
     loss_i2t = criterion(logits, labels)
     loss_t2i = criterion(logits.t(), labels)
 
@@ -144,6 +154,8 @@ def validate(
                 for input_ids in contrastive_input_ids
             ]
 
+            sample_weights = batch["sample_weights"].to(device, non_blocking=True)
+
             with autocast(enabled=use_amp):
                 outputs = model(
                     image_embeddings=image_embeddings,
@@ -153,15 +165,17 @@ def validate(
                 tf_loss = compute_teacher_forcing_loss(
                     outputs,
                     target_ids,
-                    criterion,
-                    num_image_tokens=513,
+                    num_image_tokens=image_embeddings.shape[1],
                     prompt_length=prompt_length,
                     pad_token_id=pad_token_id,
+                    reduction="none",
                 )
                 contrastive_loss = compute_contrastive_loss(
-                    image_embeddings, contrastive_text_embeddings
+                    image_embeddings, contrastive_text_embeddings, reduction="none"
                 )
-                loss = tf_loss + contrastive_loss
+                weighted_tf_loss = (tf_loss * sample_weights).mean()
+                weighted_cont_loss = (contrastive_loss * sample_weights).mean()
+                loss = weighted_tf_loss + weighted_cont_loss
 
             total_loss += loss.item()
             num_batches += 1
@@ -279,7 +293,6 @@ def main(job_id: int, config_name: str):
     scaler = GradScaler()
     use_amp = model_config.train_config.get("use_amp", True)
 
-    criterion = nn.CrossEntropyLoss(ignore_index=-100)
     num_epochs = model_config.train_config["num_epochs"]
 
     logger.info(f"Training for {num_epochs} epochs")
@@ -330,6 +343,29 @@ def main(job_id: int, config_name: str):
                 for input_ids in contrastive_input_ids
             ]
 
+            sample_weights = batch["sample_weights"].to(device, non_blocking=True)
+            objective_scales = batch["objective_scales"].to(device, non_blocking=True)
+            global_batch_idx = epoch * len(train_dataloader) + batch_idx
+            warmup_batches = 8000
+
+            if global_batch_idx < warmup_batches:
+                scale_factor = global_batch_idx / warmup_batches
+                sample_weights_adjusted = 1.0 + (sample_weights - 1.0) * scale_factor
+            else:
+                sample_weights_adjusted = sample_weights
+
+            if global_batch_idx < 5000:
+                contrastive_weight = 2.0
+            elif global_batch_idx < 8000:
+                contrastive_weight = 1.0
+            else:
+                contrastive_weight = 0.5
+
+            # if global_batch_idx < 2000:
+            #     contrastive_weight = 2.0
+            # else:
+            #     contrastive_weight = 1.0
+
             with autocast(enabled=use_amp):
                 outputs = model(
                     image_embeddings=image_embeddings,
@@ -339,14 +375,19 @@ def main(job_id: int, config_name: str):
                 tf_loss = compute_teacher_forcing_loss(
                     outputs,
                     target_ids,
-                    criterion,
-                    num_image_tokens=513,
+                    num_image_tokens=image_embeddings.shape[1],
                     prompt_length=prompt_length,
+                    pad_token_id=pad_token_id,
+                    reduction="none",
                 )
                 contrastive_loss = compute_contrastive_loss(
-                    image_embeddings, contrastive_text_embeddings
+                    image_embeddings, contrastive_text_embeddings, reduction="none"
                 )
-                loss = tf_loss + contrastive_loss
+                weighted_tf_loss = (
+                    tf_loss * objective_scales * sample_weights_adjusted
+                ).mean()
+                weighted_cont_loss = (contrastive_loss * sample_weights_adjusted).mean()
+                loss = weighted_tf_loss + contrastive_weight * weighted_cont_loss
                 loss = loss / gradient_accumulation_steps
 
             if use_amp:
@@ -356,9 +397,12 @@ def main(job_id: int, config_name: str):
 
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
                 if use_amp:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
@@ -370,7 +414,44 @@ def main(job_id: int, config_name: str):
                     f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {loss.item():.4f}"
                 )
 
-            if batch_idx % 1000 == 0 and batch_idx > 0 and main_process_flag:
+            if (
+                global_batch_idx % 25000 == 0
+                and global_batch_idx > 0
+                and main_process_flag
+            ):
+                logger.info(f"\n=== Batch {global_batch_idx} Training Dynamics ===")
+                logger.info(f"\n=== PROMPT CHECK (Batch {batch_idx}) ===")
+                logger.info(f"Objective type: {batch['objective_type'][0]}")
+                logger.info(f"Full prompt: [{batch['prompt'][0]}]")
+                logger.info(f"Prompt ends with: [{batch['prompt'][0][-30:]}]")
+                logger.info(f"Target: [{batch['objective'][0]}]")
+                logger.info("===\n")
+                logger.info(
+                    f"Sample weight scale: {scale_factor:.3f}"
+                    if global_batch_idx < warmup_batches
+                    else "Sample weights: full (2.23x)"
+                )
+                logger.info(f"Contrastive weight: {contrastive_weight}")
+                logger.info(f"Raw TF loss mean: {tf_loss.mean().item():.4f}")
+                logger.info(f"Objective scales: {objective_scales.tolist()}")
+                logger.info(f"Weighted TF loss: {weighted_tf_loss.item():.4f}")
+                logger.info(f"Weighted cont loss: {weighted_cont_loss.item():.4f}")
+                logger.info(f"Objectives in batch: {batch['objective_type']}")
+                logger.info(
+                    f"Objective counts: {dict((x, batch['objective_type'].count(x)) for x in set(batch['objective_type']))}"
+                )
+                logger.info("Sample prompts:")
+                for i in range(min(2, len(batch["prompt"]))):
+                    logger.info(
+                        f"  [{batch['objective_type'][i]}] {batch['prompt'][i][:80]}..."
+                    )
+                logger.info("Sample targets:")
+                for i in range(min(2, len(batch["objective"]))):
+                    logger.info(
+                        f"  [{batch['objective_type'][i]}] {batch['objective'][i][:80]}..."
+                    )
+
+            if batch_idx % 2500 == 0 and batch_idx > 0 and main_process_flag:
                 checkpoint_path = f"checkpoints/{job_id}/checkpoint_epoch_{epoch+1}_batch_{batch_idx+1}.pth"
                 Path(f"checkpoints/{job_id}").mkdir(exist_ok=True, parents=True)
                 torch.save(
@@ -385,7 +466,11 @@ def main(job_id: int, config_name: str):
                 )
                 logger.info(f"Saved checkpoint: {checkpoint_path}")
 
-            if batch_idx in (100, 1000, 10000):
+            if (
+                global_batch_idx % 25000 == 0
+                and global_batch_idx > 0
+                and main_process_flag
+            ):
                 count = 0
                 test_dataloader = data_loader_handler.get_val_dataloader()
                 check_prompt = "Generate a detailed radiologist's medical impression based on the findings from the attached head CT scan."
@@ -413,9 +498,8 @@ def main(job_id: int, config_name: str):
                             logger.info("-" * 40)
 
                         count += 1
-                        if count > 5:
+                        if count > 2:
                             break
-                model.train()
 
         avg_train_loss = total_train_loss / len(train_dataloader)
         epoch_time = datetime.now() - epoch_start_time
@@ -425,7 +509,6 @@ def main(job_id: int, config_name: str):
         val_loss = validate(
             model,
             val_dataloader,
-            criterion,
             device,
             use_amp=use_amp,
             pad_token_id=pad_token_id,
@@ -495,7 +578,6 @@ def main(job_id: int, config_name: str):
     test_loss = validate(
         model,
         test_dataloader,
-        criterion,
         device,
         use_amp=use_amp,
         pad_token_id=pad_token_id,
