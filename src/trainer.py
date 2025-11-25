@@ -36,7 +36,6 @@ def compute_teacher_forcing_loss(
     Args:
         outputs: Model outputs with logits
         target_ids: Target token IDs [batch, target_len]
-        criterion: Loss function
         num_image_tokens: Number of image tokens to skip
         prompt_length: Length of prompt tokens (to skip when computing loss)
 
@@ -114,7 +113,6 @@ def compute_contrastive_loss(
 def validate(
     model,
     dataloader,
-    criterion,
     device,
     use_amp=True,
     pad_token_id=-100,
