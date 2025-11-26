@@ -6,7 +6,7 @@ import torch.distributed as dist
 from torch.optim.lr_scheduler import LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 from torch import nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import autocast
 from src.logger import setup_logging
 from src.model import LLaVAHeadCT
 from src.config_handler import ModelConfig, DataLoaderHandler
@@ -99,6 +99,7 @@ def compute_contrastive_loss(
 
     # Compute similarity matrix
     logits = torch.matmul(image_embeddings, text_embeddings.t()) / temperature
+    logits = torch.clamp(logits, min=-15, max=15)
 
     labels = torch.arange(batch_size).to(image_embeddings.device)
 
@@ -211,6 +212,7 @@ def main(job_id: int, config_name: str):
         logger.info(
             f"Loading model state dict from: {model_config.model_state_dict_path}"
         )
+        checkpoint = torch.load(model_config.model_state_dict_path, map_location=device)
 
     logger.info("Initializing model...")
     model: LLaVAHeadCT | torch.nn.parallel.DistributedDataParallel = LLaVAHeadCT(
@@ -292,8 +294,36 @@ def main(job_id: int, config_name: str):
         optimizer, schedulers=[warmup_scheduler, constant_scheduler], milestones=[1000]
     )
 
-    scaler = GradScaler()
+    scaler = torch.cuda.amp.GradScaler(
+        init_scale=2.0**12,
+        growth_interval=2000,
+        backoff_factor=0.5,
+        growth_factor=2.0,
+    )
     use_amp = model_config.train_config.get("use_amp", True)
+    if use_amp:
+        scaler = torch.cuda.amp.GradScaler(
+            init_scale=2.0**12,
+            growth_interval=2000,
+            backoff_factor=0.5,
+            growth_factor=2.0,
+        )
+
+        if (
+            "scaler_state_dict" in checkpoint
+            and checkpoint["scaler_state_dict"] is not None
+        ):
+            try:
+                scaler.load_state_dict(checkpoint["scaler_state_dict"])
+                logger.info(f"✓ Loaded scaler state (scale={scaler.get_scale()})")
+            except Exception as e:
+                logger.warning(f"⚠ Failed to load scaler state: {e}")
+                logger.warning(
+                    f"  Using conservative init (scale={scaler.get_scale()})"
+                )
+        else:
+            logger.info("No scaler state in checkpoint")
+            logger.info(f"Using conservative init (scale={scaler.get_scale()})")
 
     num_epochs = model_config.train_config["num_epochs"]
 
@@ -377,12 +407,31 @@ def main(job_id: int, config_name: str):
                 loss = weighted_tf_loss + contrastive_weight * weighted_cont_loss
                 loss = loss / gradient_accumulation_steps
 
+            if torch.isnan(loss) or torch.isinf(loss):
+                logger.warning(
+                    f"Rank {torch.distributed.get_rank()}, Batch {batch_idx}: Invalid loss, skipping backward"
+                )
+                logger.warning(f"Objective text: {batch['objective'][0]}")
+                optimizer.zero_grad()
+                continue
+
             if use_amp:
                 scaler.scale(loss).backward()
             else:
                 loss.backward()
 
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                has_nan_grad = any(
+                    torch.isnan(p.grad).any()
+                    for p in model.parameters()
+                    if p.grad is not None
+                )
+                if has_nan_grad:
+                    logger.warning(f"NaN after unscaling at batch {batch_idx}")
+                    logger.warning(f"Accession numbers: {batch['accession_number']}")
+                    optimizer.zero_grad()
+                    scaler.update()
+                    continue
                 if use_amp:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -443,6 +492,7 @@ def main(job_id: int, config_name: str):
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
                         "loss": loss.item(),
+                        "scaler_state_dict": scaler.state_dict() if use_amp else None,
                     },
                     checkpoint_path,
                 )
@@ -518,6 +568,7 @@ def main(job_id: int, config_name: str):
                     "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
                     "train_loss": avg_train_loss,
                     "val_loss": val_loss,
+                    "scaler_state_dict": scaler.state_dict() if use_amp else None,
                 },
                 best_model_path,
             )
@@ -533,6 +584,7 @@ def main(job_id: int, config_name: str):
                     "optimizer_state_dict": optimizer.state_dict(),  # type: ignore
                     "train_loss": avg_train_loss,
                     "val_loss": val_loss,
+                    "scaler_state_dict": scaler.state_dict() if use_amp else None,
                 },
                 epoch_checkpoint_path,
             )

@@ -28,7 +28,7 @@ def get_training_weight_config(
             sample_weights_adjusted = sample_weights
 
     if is_resume or epoch > 1:
-        contrastive_weight = 0.5
+        contrastive_weight = 0.3
     else:
         if global_batch_idx < 5000:
             contrastive_weight = 2.0
