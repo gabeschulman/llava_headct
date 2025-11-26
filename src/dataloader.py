@@ -68,8 +68,8 @@ class HeadCTDataset(Dataset):
             allow_missing_keys: Whether to allow missing keys in transforms
         """
         set_seeds(seed)
-        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).shuffle(
-            seed=seed
+        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).sample(
+            fraction=1.0, shuffle=True, with_replacement=False, seed=seed
         )
         self._data_rows = self.image_df.to_dicts()
 
