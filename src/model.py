@@ -8,7 +8,6 @@ from torch import nn
 class LLaVAHeadCT(nn.Module):
     def __init__(
         self,
-        vision_encoder_weights: str,
         vision_encoder_in_chans: int,
         vision_encoder_img_size: Sequence[int] | int,
         vision_encoder_patch_size: Sequence[int] | int,
@@ -16,6 +15,7 @@ class LLaVAHeadCT(nn.Module):
         hidden_dim: int,
         output_dim: int,
         decoder_model_name: str,
+        vision_encoder_weights: Optional[str] = None,
         learning_rate: float = 1e-4,
         weight_decay: float = 0.01,
         state_dict_path: Optional[str] = None,
@@ -26,6 +26,11 @@ class LLaVAHeadCT(nn.Module):
         use_pretrained_encoder_weights: bool = (
             True if state_dict_path is None else False
         )
+
+        if state_dict_path is not None and vision_encoder_weights is not None:
+            raise ValueError(
+                "Cannot specify both state_dict_path and vision_encoder_weights."
+            )
 
         self.encoder = Encoder(
             weights_path=vision_encoder_weights,

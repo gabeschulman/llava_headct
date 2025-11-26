@@ -4,8 +4,8 @@
     },
     "projector": {
         "input_dim": 768,
-        "hidden_dim": 832,
-        "output_dim": 896
+        "hidden_dim": 2048,
+        "output_dim": 2048
     },
     "encoder": {
         "vision_encoder_in_chans": 3,
@@ -40,7 +40,8 @@
         "max_text_length": 512,
         "roi": [-1000, 400],
         "window_sizes": [[80, 80], [120, 120], [160, 160]],
-        "use_cached_images": true
+        "use_cached_images": true,
+        "seed": 7
     },
     "model_state_dict_path": "/gpfs/scratch/gs4342/llava_headct/checkpoints/13628274/best_model.pth"
 }

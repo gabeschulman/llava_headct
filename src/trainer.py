@@ -238,6 +238,8 @@ def main(job_id: int, config_name: str):
     logger.info(f"Trainable parameters: {trainable_params:,}")
 
     logger.info("Setting up train dataloader...")
+    seed = model_config.dataloader_config.get("seed")
+    logger.info(f"Using seed: {seed}")
     batch_size = model_config.dataloader_config["batch_size"]
     gradient_accumulation_steps = model_config.train_config.get(
         "gradient_accumulation_steps", 1

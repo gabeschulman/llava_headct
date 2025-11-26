@@ -2,6 +2,7 @@ from functools import partial
 import polars as pl
 import torch
 import numpy as np
+import random
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from monai import transforms
@@ -15,6 +16,15 @@ from src.constants import (
     INDIVIDUAL_CONDITIONS_LIST,
     ABBREVIATED_CONDITIONS_DICT,
 )
+
+
+def set_seeds(seed):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    pl.set_random_seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 class HeadCTDataset(Dataset):
@@ -40,7 +50,7 @@ class HeadCTDataset(Dataset):
         axcodes: str = "RAS",
         mode: int = 3,
         allow_missing_keys: bool = True,
-        numpy_seed: int = 1,
+        seed: int = 1,
         objective_dict: dict = OBJECTIVE_DICT,
     ):
         """
@@ -57,9 +67,9 @@ class HeadCTDataset(Dataset):
             mode: Interpolation mode for resampling
             allow_missing_keys: Whether to allow missing keys in transforms
         """
-        np.random.seed(numpy_seed)
-        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).sample(
-            fraction=1.0, shuffle=True, seed=42
+        set_seeds(seed)
+        self.image_df: pl.DataFrame = pl.read_parquet(image_file_location).shuffle(
+            seed=seed
         )
         self._data_rows = self.image_df.to_dicts()
 
@@ -418,6 +428,7 @@ def create_head_ct_dataloader(
     roi: Tuple[int, int, int] = (96, 96, 96),
     window_sizes: List[Tuple[int, int]] = [(40, 80), (80, 200), (600, 2800)],
     persistent_workers: bool = True,
+    seed: int = 1,
     **dataset_kwargs,
 ) -> DataLoader:
     """
@@ -446,6 +457,7 @@ def create_head_ct_dataloader(
         max_text_length=max_text_length,
         roi=roi,
         window_sizes=window_sizes,
+        seed=seed,
         **dataset_kwargs,
     )
 

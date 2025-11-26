@@ -51,10 +51,10 @@ OBJECTIVE_SCALES = {
 }
 
 OBJECTIVE_DICT = {
-    "narrative_generation": 0.30,
-    "condition_classification": 0.30,
-    "individual_condition_classification": 0.20,
-    "impression_generation": 0.20,
+    "narrative_generation": 0.35,
+    "condition_classification": 0.35,
+    "individual_condition_classification": 0.25,
+    "impression_generation": 0.05,
 }
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
