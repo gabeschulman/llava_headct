@@ -28,34 +28,34 @@ PROMPT_TEMPLATES: dict[str, str] = {
 }
 
 # Phase 1
-OBJECTIVE_DICT = {
-    "narrative_generation": 0.025,
-    "condition_classification": 0.7,
-    "individual_condition_classification": 0.275,
-    "impression_generation": 0.0,
-}
+# OBJECTIVE_DICT = {
+#     "narrative_generation": 0.025,
+#     "condition_classification": 0.7,
+#     "individual_condition_classification": 0.275,
+#     "impression_generation": 0.0,
+# }
 
-OBJECTIVE_SCALES = {
-    "condition_classification": 3.0,
-    "individual_condition_classification": 2.0,
-    "narrative_generation": 1.0,
-    "impression_generation": 0.25,
-}
+# OBJECTIVE_SCALES = {
+#     "condition_classification": 3.0,
+#     "individual_condition_classification": 2.0,
+#     "narrative_generation": 1.0,
+#     "impression_generation": 0.25,
+# }
 
 # Phase 2
-# OBJECTIVE_SCALES = {
-#     'narrative_generation': 1.0,
-#     'condition_classification': 7.0,
-#     'individual_condition_classification': 5.0,
-#     'impression_generation': 0.25,
-# }
+OBJECTIVE_SCALES = {
+    "narrative_generation": 1.0,
+    "condition_classification": 3.0,
+    "individual_condition_classification": 2.0,
+    "impression_generation": 0.5,
+}
 
-# OBJECTIVE_DICT = {
-#     'narrative_generation': 0.30,
-#     'condition_classification': 0.40,
-#     'individual_condition_classification': 0.30,
-#     'impression_generation': 0.00,
-# }
+OBJECTIVE_DICT = {
+    "narrative_generation": 0.30,
+    "condition_classification": 0.30,
+    "individual_condition_classification": 0.20,
+    "impression_generation": 0.20,
+}
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
     "IPH": "intraparenchymal hemorrhage",

@@ -10,6 +10,7 @@ from torch.cuda.amp import autocast, GradScaler
 from src.logger import setup_logging
 from src.model import LLaVAHeadCT
 from src.config_handler import ModelConfig, DataLoaderHandler
+from src.train_utils import determine_is_resume, get_training_weight_config
 
 
 def is_main_process():
@@ -186,6 +187,7 @@ def main(job_id: int, config_name: str):
     rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     main_process_flag = is_main_process()
+    is_resume = determine_is_resume(config_name)
 
     logger = setup_logging()
     if main_process_flag:
@@ -344,25 +346,10 @@ def main(job_id: int, config_name: str):
             sample_weights = batch["sample_weights"].to(device, non_blocking=True)
             objective_scales = batch["objective_scales"].to(device, non_blocking=True)
             global_batch_idx = epoch * len(train_dataloader) + batch_idx
-            warmup_batches = 8000
 
-            if global_batch_idx < warmup_batches:
-                scale_factor = global_batch_idx / warmup_batches
-                sample_weights_adjusted = 1.0 + (sample_weights - 1.0) * scale_factor
-            else:
-                sample_weights_adjusted = sample_weights
-
-            if global_batch_idx < 5000:
-                contrastive_weight = 2.0
-            elif global_batch_idx < 8000:
-                contrastive_weight = 1.0
-            else:
-                contrastive_weight = 0.5
-
-            # if global_batch_idx < 2000:
-            #     contrastive_weight = 2.0
-            # else:
-            #     contrastive_weight = 1.0
+            sample_weights_adjusted, contrastive_weight = get_training_weight_config(
+                epoch, global_batch_idx, sample_weights, is_resume=is_resume
+            )
 
             with autocast(enabled=use_amp):
                 outputs = model(
@@ -424,11 +411,6 @@ def main(job_id: int, config_name: str):
                 logger.info(f"Prompt ends with: [{batch['prompt'][0][-30:]}]")
                 logger.info(f"Target: [{batch['objective'][0]}]")
                 logger.info("===\n")
-                logger.info(
-                    f"Sample weight scale: {scale_factor:.3f}"
-                    if global_batch_idx < warmup_batches
-                    else "Sample weights: full (2.23x)"
-                )
                 logger.info(f"Contrastive weight: {contrastive_weight}")
                 logger.info(f"Raw TF loss mean: {tf_loss.mean().item():.4f}")
                 logger.info(f"Objective scales: {objective_scales.tolist()}")

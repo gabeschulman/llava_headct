@@ -1,6 +1,6 @@
 {
     "decoder": {
-        "decoder_model_name": "Qwen/Qwen2.5-0.5B"
+        "decoder_model_name": "Qwen/Qwen3-1.7B"
     },
     "projector": {
         "input_dim": 768,
@@ -8,7 +8,6 @@
         "output_dim": 896
     },
     "encoder": {
-        "vision_encoder_weights": "/gpfs/data/razavianlab/hh2740/FM_model_weights/FM_CT_pretrained_clear.pth",
         "vision_encoder_in_chans": 3,
         "vision_encoder_img_size": 96,
         "vision_encoder_patch_size": 12
@@ -43,5 +42,5 @@
         "window_sizes": [[80, 80], [120, 120], [160, 160]],
         "use_cached_images": true
     },
-    "model_state_dict_path": "checkpoints/cached_weights/condition_classification_pretraining_4.pth"
+    "model_state_dict_path": "/gpfs/scratch/gs4342/llava_headct/checkpoints/13628274/best_model.pth"
 }
