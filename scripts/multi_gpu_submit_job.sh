@@ -2,8 +2,8 @@
 #SBATCH --job-name=llava_head_ct_pretrain
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:a100:4
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:a100:2
 #SBATCH --time=1-00:00:00
 #SBATCH --mem=128G
 #SBATCH --partition=a100_short
@@ -35,7 +35,7 @@ echo "Start time: $(date)"
 echo "Working directory: $(pwd)"
 
 # Launch with torchrun for distributed training
-torchrun --nnodes 1 --nproc_per_node 4 --master_port 12400 \
-    src/trainer.py --job_id $SLURM_JOB_ID --config_name pretrain_config_large
+torchrun --nnodes 1 --nproc_per_node 2 --master_port 12400 \
+    src/trainer.py --job_id $SLURM_JOB_ID --config_name narrative_train_config
 
 echo "Job completed at: $(date)"
