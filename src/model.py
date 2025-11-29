@@ -21,6 +21,9 @@ class LLaVAHeadCT(nn.Module):
         state_dict_path: Optional[str] = None,
         fine_tune_encoder: bool = False,
         fine_tune_encoder_blocks: int = 3,
+        projector_dropout: float = 0.0,
+        decoder_hidden_dropout: float = 0.0,
+        decoder_attention_dropout: float = 0.0,
     ):
         super().__init__()
         use_pretrained_encoder_weights: bool = (
@@ -46,9 +49,14 @@ class LLaVAHeadCT(nn.Module):
             input_dim=input_dim,
             hidden_dim=hidden_dim,
             output_dim=output_dim,
+            dropout=projector_dropout,
         )
 
-        self.decoder = Decoder(model_name=decoder_model_name)
+        self.decoder = Decoder(
+            model_name=decoder_model_name,
+            hidden_dropout=decoder_hidden_dropout,
+            attention_dropout=decoder_attention_dropout,
+        )
 
         if state_dict_path is not None:
             self.state_dict_path = state_dict_path

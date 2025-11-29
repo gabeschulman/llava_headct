@@ -27,6 +27,22 @@ PROMPT_TEMPLATES: dict[str, str] = {
     "individual_condition_classification": "For the following individual condition, indicate whether it is present ('Yes') or absent ('No'): {condition}. Respond with only: Yes or No\n\nANSWER:",
 }
 
+# final
+OBJECTIVE_DICT = {
+    "clinical_qa": 0.35,
+    "narrative_generation": 0.10,
+    "condition_classification": 0.30,
+    "individual_condition_classification": 0.25,
+    "impression_generation": 0.0,
+}
+OBJECTIVE_SCALES = {
+    "clinical_qa": 1.0,
+    "narrative_generation": 1.0,
+    "condition_classification": 2.0,
+    "individual_condition_classification": 1.5,
+    "impression_generation": 0.0,
+}
+
 # Phase 1
 # OBJECTIVE_DICT = {
 #     "narrative_generation": 0.025,
@@ -36,8 +52,8 @@ PROMPT_TEMPLATES: dict[str, str] = {
 # }
 
 # OBJECTIVE_SCALES = {
-#     "condition_classification": 3.0,
-#     "individual_condition_classification": 2.0,
+#     "condition_classification": 2.0,
+#     "individual_condition_classification": 1.5,
 #     "narrative_generation": 1.0,
 #     "impression_generation": 0.25,
 # }
@@ -46,8 +62,8 @@ PROMPT_TEMPLATES: dict[str, str] = {
 # OBJECTIVE_SCALES = {
 #     "clinical_qa": 1.0,
 #     "narrative_generation": 1.0,
-#     "condition_classification": 3.0,
-#     "individual_condition_classification": 2.0,
+#     "condition_classification": 2.0,
+#     "individual_condition_classification": 1.5,
 #     "impression_generation": 0.0,
 # }
 
@@ -58,22 +74,6 @@ PROMPT_TEMPLATES: dict[str, str] = {
 #     "individual_condition_classification": 0.25,
 #     "impression_generation": 0.0,
 # }
-
-# QA - focused
-OBJECTIVE_DICT = {
-    "clinical_qa": 0.55,
-    "narrative_generation": 0.0,
-    "condition_classification": 0.25,
-    "individual_condition_classification": 0.20,
-}
-
-OBJECTIVE_SCALES = {
-    "clinical_qa": 1.0,
-    "narrative_generation": 1.0,
-    "condition_classification": 3.0,
-    "individual_condition_classification": 2.0,
-}
-
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
     "IPH": "intraparenchymal hemorrhage",

@@ -1,11 +1,14 @@
 {
     "decoder": {
-        "decoder_model_name": "Qwen/Qwen3-1.7B"
+        "decoder_model_name": "Qwen/Qwen3-1.7B",
+        "decoder_hidden_dropout": 0.05,
+        "decoder_attention_dropout": 0.05
     },
     "projector": {
         "input_dim": 768,
         "hidden_dim": 2048,
-        "output_dim": 2048
+        "output_dim": 2048,
+        "projector_dropout": 0.05
     },
     "encoder": {
         "vision_encoder_in_chans": 3,
@@ -32,7 +35,9 @@
         "projector_lr": 1e-4,
         "decoder_lr": 5e-5,
         "weight_decay": 0.01,
-        "use_amp": true
+        "label_smoothing": 0.0,
+        "use_amp": true,
+        "gradient_clip": 0.75
     },
     "dataloader": {
         "batch_size": 4,

@@ -29,6 +29,7 @@ def compute_teacher_forcing_loss(
     prompt_length=0,
     pad_token_id=-100,
     reduction="mean",
+    label_smoothing=0.0,
 ):
     """
     Compute the cross-entropy loss for text generation with teacher forcing.
@@ -61,7 +62,9 @@ def compute_teacher_forcing_loss(
     batch_size = logits_for_targets.size(0)
     seq_len = logits_for_targets.size(1)
 
-    criterion_per_token = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
+    criterion_per_token = nn.CrossEntropyLoss(
+        reduction="none", ignore_index=-100, label_smoothing=label_smoothing
+    )
     loss_per_token = criterion_per_token(
         logits_for_targets.view(-1, vocab_size), labels.view(-1)
     )
@@ -73,6 +76,57 @@ def compute_teacher_forcing_loss(
         return loss_per_sample
     else:
         return loss_per_token.mean()
+
+
+# def compute_teacher_forcing_loss(
+#     outputs,
+#     target_ids,
+#     num_image_tokens=513,
+#     prompt_length=0,
+#     pad_token_id=-100,
+#     reduction="mean",
+#     label_smoothing=0.0,
+# ):
+#     logits_for_targets = outputs.logits[
+#         :, num_image_tokens + prompt_length - 1 :
+#     ].contiguous()
+#     labels = target_ids.contiguous()
+
+#     valid_mask = (labels != pad_token_id)
+
+#     labels_for_loss = torch.where(
+#         valid_mask,
+#         labels,
+#         torch.zeros_like(labels)
+#     )
+
+#     vocab_size = logits_for_targets.size(-1)
+#     batch_size = logits_for_targets.size(0)
+#     seq_len = logits_for_targets.size(1)
+
+#     if label_smoothing > 0:
+#         log_probs = torch.nn.functional.log_softmax(logits_for_targets, dim=-1)
+#         with torch.no_grad():
+#             true_dist = torch.zeros_like(log_probs)
+#             true_dist.fill_(label_smoothing / (vocab_size - 1))
+#             true_dist.scatter_(2, labels_for_loss.unsqueeze(2), 1.0 - label_smoothing)
+
+#         loss_per_token = -(true_dist * log_probs).sum(dim=-1)
+#     else:
+#         criterion = nn.CrossEntropyLoss(reduction="none")
+#         loss_per_token = criterion(
+#             logits_for_targets.view(-1, vocab_size),
+#             labels_for_loss.view(-1)
+#         ).view(batch_size, seq_len)
+
+#     loss_per_token = loss_per_token * valid_mask.float()
+
+#     if reduction == "none":
+#         valid_counts = valid_mask.sum(dim=1).clamp(min=1)
+#         loss_per_sample = loss_per_token.sum(dim=1) / valid_counts
+#         return loss_per_sample
+#     else:
+#         return loss_per_token.sum() / valid_mask.sum().clamp(min=1)
 
 
 def compute_contrastive_loss(
@@ -122,6 +176,8 @@ def validate(
     device,
     use_amp=True,
     pad_token_id=-100,
+    contrastive_weight=1.0,
+    label_smoothing=0.0,
 ):
     """Run validation and return average loss."""
     model.eval()
@@ -159,6 +215,7 @@ def validate(
             ]
 
             sample_weights = batch["sample_weights"].to(device, non_blocking=True)
+            objective_scales = batch["objective_scales"].to(device, non_blocking=True)
 
             with autocast(enabled=use_amp):
                 outputs = model(
@@ -173,13 +230,14 @@ def validate(
                     prompt_length=prompt_length,
                     pad_token_id=pad_token_id,
                     reduction="none",
+                    label_smoothing=label_smoothing,
                 )
                 contrastive_loss = compute_contrastive_loss(
                     image_embeddings, contrastive_text_embeddings, reduction="none"
                 )
-                weighted_tf_loss = (tf_loss * sample_weights).mean()
+                weighted_tf_loss = (tf_loss * objective_scales * sample_weights).mean()
                 weighted_cont_loss = (contrastive_loss * sample_weights).mean()
-                loss = weighted_tf_loss + weighted_cont_loss
+                loss = weighted_tf_loss + contrastive_weight * weighted_cont_loss
 
             total_loss += loss.item()
             num_batches += 1
@@ -314,7 +372,7 @@ def main(job_id: int, config_name: str):
         optimizer,
         start_factor=0.1,
         end_factor=1.0,
-        total_iters=1000 // gradient_accumulation_steps,
+        total_iters=2000 // gradient_accumulation_steps,
     )
 
     constant_scheduler = LinearLR(
@@ -325,13 +383,15 @@ def main(job_id: int, config_name: str):
     )
 
     scheduler = SequentialLR(
-        optimizer, schedulers=[warmup_scheduler, constant_scheduler], milestones=[1000]
+        optimizer,
+        schedulers=[warmup_scheduler, constant_scheduler],
+        milestones=[2000 // gradient_accumulation_steps],
     )
 
     use_amp = model_config.train_config.get("use_amp", True)
     if use_amp:
         scaler = torch.cuda.amp.GradScaler(
-            init_scale=2.0**12,
+            init_scale=2.0**10,
             growth_interval=2000,
             backoff_factor=0.5,
             growth_factor=2.0,
@@ -359,6 +419,11 @@ def main(job_id: int, config_name: str):
     logger.info(f"Learning rate: {model_config.train_config['base_lr']}")
     logger.info(f"Weight decay: {model_config.train_config['weight_decay']}")
     logger.info(f"Mixed precision (AMP): {use_amp}")
+
+    gradient_clip = model_config.train_config.get("gradient_clip", 1.0)
+    logger.info(f"Gradient clipping norm: {gradient_clip}")
+    label_smoothing = model_config.train_config.get("label_smoothing", 0.0)
+    logger.info(f"Label smoothing: {label_smoothing}")
 
     best_val_loss = float("inf")
     best_epoch = 0
@@ -423,6 +488,7 @@ def main(job_id: int, config_name: str):
                     prompt_length=prompt_length,
                     pad_token_id=pad_token_id,
                     reduction="none",
+                    label_smoothing=label_smoothing,
                 )
                 contrastive_loss = compute_contrastive_loss(
                     image_embeddings, contrastive_text_embeddings, reduction="none"
@@ -455,17 +521,21 @@ def main(job_id: int, config_name: str):
                 )
                 if has_nan_grad:
                     logger.warning(f"NaN after unscaling at batch {batch_idx}")
-                    logger.warning(f"Accession numbers: {batch['accession_number']}")
+                    logger.warning(f"Accession numbers: {batch['accession_numbers']}")
                     optimizer.zero_grad()
                     scaler.update()
                     continue
                 if use_amp:
                     scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=gradient_clip
+                    )
                     scaler.step(optimizer)
                     scaler.update()
                 else:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=gradient_clip
+                    )
                     optimizer.step()
                 optimizer.zero_grad()
                 scheduler.step()
@@ -571,6 +641,8 @@ def main(job_id: int, config_name: str):
             device,
             use_amp=use_amp,
             pad_token_id=pad_token_id,
+            contrastive_weight=contrastive_weight,
+            label_smoothing=label_smoothing,
         )
 
         if main_process_flag:
@@ -642,6 +714,8 @@ def main(job_id: int, config_name: str):
         device,
         use_amp=use_amp,
         pad_token_id=pad_token_id,
+        contrastive_weight=contrastive_weight,
+        label_smoothing=label_smoothing,
     )
 
     if main_process_flag:

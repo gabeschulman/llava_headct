@@ -67,23 +67,14 @@ class ModelConfig:
         missing_keys = [key for key in required_keys if key not in projector_config]
         if missing_keys:
             raise KeyError(f"Missing required projector config keys: {missing_keys}")
-        mistyped_keys = [
-            key for key in required_keys if not isinstance(projector_config[key], int)
-        ]
-        if mistyped_keys:
-            raise TypeError(f"Projector config keys must be integers: {mistyped_keys}")
         return projector_config
 
     def load_decoder_config(self) -> Dict[str, Any]:
         if "decoder" not in self.config:
             raise KeyError("Decoder configuration not found in config file.")
         decoder_config: Dict[str, Any] = self.config["decoder"]
-        required_keys = ["decoder_model_name"]
-        mistyped_keys = [
-            key for key in required_keys if not isinstance(decoder_config[key], str)
-        ]
-        if mistyped_keys:
-            raise TypeError(f"Decoder config keys must be strings: {mistyped_keys}")
+        if "decoder_model_name" not in decoder_config:
+            raise KeyError("Decoder config missing 'decoder_model_name' key.")
         return decoder_config
 
     def load_dataset_config(self) -> Dict[str, Any]:

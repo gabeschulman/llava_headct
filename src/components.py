@@ -57,7 +57,9 @@ class Encoder(ViT):
 
 
 class Projector(nn.Module):
-    def __init__(self, input_dim=768, hidden_dim=2048, output_dim=896, num_layers=3):
+    def __init__(
+        self, input_dim=768, hidden_dim=2048, output_dim=896, num_layers=3, dropout=0.0
+    ):
         super().__init__()
 
         layers = []
@@ -69,8 +71,8 @@ class Projector(nn.Module):
         for _ in range(num_layers - 2):
             layers.append(nn.Linear(hidden_dim, hidden_dim))
             layers.append(nn.GELU())
-            layers.append(nn.LayerNorm(hidden_dim))  # Add layer norm between
-
+            layers.append(nn.LayerNorm(hidden_dim))
+        layers.append(nn.Dropout(dropout) if dropout > 0 else nn.Identity())
         layers.append(nn.Linear(hidden_dim, output_dim))
 
         self.proj = nn.Sequential(*layers)
@@ -80,13 +82,20 @@ class Projector(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, model_name: str):
+    def __init__(
+        self,
+        model_name: str,
+        hidden_dropout: float = 0.0,
+        attention_dropout: float = 0.0,
+    ):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model.resize_token_embeddings(len(self.tokenizer))
         self.model.gradient_checkpointing_enable()
+        self.model.config.hidden_dropout = hidden_dropout
+        self.model.config.attention_dropout = attention_dropout
 
     def forward(self, input_embeds, attention_mask=None, **kwargs):
         return self.model(
