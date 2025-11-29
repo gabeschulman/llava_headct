@@ -1,5 +1,7 @@
 import argparse
 from datetime import datetime
+import os
+import gc
 from pathlib import Path
 import torch
 import torch.distributed as dist
@@ -11,6 +13,8 @@ from src.logger import setup_logging
 from src.model import LLaVAHeadCT
 from src.config_handler import ModelConfig, DataLoaderHandler
 from src.train_utils import determine_is_resume, get_training_weight_config
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
 def is_main_process():
@@ -185,12 +189,17 @@ def validate(
 
 
 def main(job_id: int, config_name: str):
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        gc.collect()
+        torch.cuda.synchronize()
     rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     main_process_flag = is_main_process()
-    is_resume = determine_is_resume(config_name)
 
     logger = setup_logging()
+    logger.info(f"Job ID: {job_id}, Config: {config_name}")
+
     if main_process_flag:
         logger.info(f"CUDA available: {torch.cuda.is_available()}")
         logger.info(f"GPU count: {torch.cuda.device_count()}")
@@ -202,8 +211,10 @@ def main(job_id: int, config_name: str):
         logger.info(f"Using device: {device}")
 
     model_config = ModelConfig(config_name)
+    is_resume = determine_is_resume(model_config)
     if main_process_flag:
         logger.info(f"Loaded config: {model_config}")
+        logger.info(f"Is resume: {is_resume}")
     data_loader_handler = DataLoaderHandler(
         model_config, rank=rank, world_size=world_size
     )
@@ -213,6 +224,9 @@ def main(job_id: int, config_name: str):
             f"Loading model state dict from: {model_config.model_state_dict_path}"
         )
         checkpoint = torch.load(model_config.model_state_dict_path, map_location=device)
+    else:
+        logger.info("No model state dict path provided, training from scratch.")
+        checkpoint = {}
 
     logger.info("Initializing model...")
     model: LLaVAHeadCT | torch.nn.parallel.DistributedDataParallel = LLaVAHeadCT(
@@ -227,12 +241,14 @@ def main(job_id: int, config_name: str):
     )
     logger.info(f"Pad token ID: {pad_token_id}")
 
-    # Wrap model in DistributedDataParallel for multi-GPU training
     if world_size > 1:
         model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[rank], output_device=rank, find_unused_parameters=False
         )
         logger.info(f"Model wrapped in DDP for rank {rank}")
+        logger.info(
+            f"[Rank {rank}] Memory after model load: {torch.cuda.memory_allocated(rank) / 1024**3:.2f} GB"
+        )
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -261,20 +277,38 @@ def main(job_id: int, config_name: str):
     optimizer = torch.optim.AdamW(
         [
             {
-                "params": model.encoder.parameters(),
+                "params": (
+                    model.module if world_size > 1 else model
+                ).encoder.parameters(),
                 "lr": model_config.train_config.get("encoder_lr", 1e-6),
             },
             {
-                "params": model.projector.parameters(),
+                "params": (
+                    model.module if world_size > 1 else model
+                ).projector.parameters(),
                 "lr": model_config.train_config.get("projector_lr", 1e-4),
             },
             {
-                "params": model.decoder.parameters(),
+                "params": (
+                    model.module if world_size > 1 else model
+                ).decoder.parameters(),
                 "lr": model_config.train_config.get("decoder_lr", 5e-5),
             },
         ],
         weight_decay=model_config.train_config.get("weight_decay", 0.01),
     )
+    logger.info(
+        f"[Rank {rank}] Memory after optimizer create: {torch.cuda.memory_allocated(rank) / 1024**3:.2f} GB"
+    )
+    if (
+        "optimizer_state_dict" in checkpoint.keys()
+        and checkpoint["optimizer_state_dict"] is not None
+    ):
+        logger.info("Loading optimizer state from checkpoint...")
+        optimizer.load_state_dict(checkpoint.get("optimizer_state_dict"))
+        logger.info(
+            f"[Rank {rank}] Memory after optimizer load: {torch.cuda.memory_allocated(rank) / 1024**3:.2f} GB"
+        )
 
     warmup_scheduler = LinearLR(
         optimizer,
@@ -294,12 +328,6 @@ def main(job_id: int, config_name: str):
         optimizer, schedulers=[warmup_scheduler, constant_scheduler], milestones=[1000]
     )
 
-    scaler = torch.cuda.amp.GradScaler(
-        init_scale=2.0**12,
-        growth_interval=2000,
-        backoff_factor=0.5,
-        growth_factor=2.0,
-    )
     use_amp = model_config.train_config.get("use_amp", True)
     if use_amp:
         scaler = torch.cuda.amp.GradScaler(
@@ -336,7 +364,6 @@ def main(job_id: int, config_name: str):
     best_epoch = 0
 
     model_unwrapped = model.module if world_size > 1 else model
-
     for epoch in range(num_epochs):
         if world_size > 1:
             train_dataloader.sampler.set_epoch(epoch)  # type: ignore

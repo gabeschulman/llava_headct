@@ -42,20 +42,38 @@ PROMPT_TEMPLATES: dict[str, str] = {
 #     "impression_generation": 0.25,
 # }
 
-# Phase 2
+# # Phase 2
+# OBJECTIVE_SCALES = {
+#     "clinical_qa": 1.0,
+#     "narrative_generation": 1.0,
+#     "condition_classification": 3.0,
+#     "individual_condition_classification": 2.0,
+#     "impression_generation": 0.0,
+# }
+
+# OBJECTIVE_DICT = {
+#     "clinical_qa": 0.35,
+#     "narrative_generation": 0.1,
+#     "condition_classification": 0.3,
+#     "individual_condition_classification": 0.25,
+#     "impression_generation": 0.0,
+# }
+
+# QA - focused
+OBJECTIVE_DICT = {
+    "clinical_qa": 0.55,
+    "narrative_generation": 0.0,
+    "condition_classification": 0.25,
+    "individual_condition_classification": 0.20,
+}
+
 OBJECTIVE_SCALES = {
+    "clinical_qa": 1.0,
     "narrative_generation": 1.0,
     "condition_classification": 3.0,
     "individual_condition_classification": 2.0,
-    "impression_generation": 0.5,
 }
 
-OBJECTIVE_DICT = {
-    "narrative_generation": 0.35,
-    "condition_classification": 0.35,
-    "individual_condition_classification": 0.25,
-    "impression_generation": 0.05,
-}
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
     "IPH": "intraparenchymal hemorrhage",

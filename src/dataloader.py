@@ -136,6 +136,11 @@ class HeadCTDataset(Dataset):
                 )
             elif obj == "individual_condition_classification":
                 is_valid = True
+            elif obj == "clinical_qa":
+                is_valid = any(
+                    row.get(f"q{i}") is not None and row.get(f"a{i}") is not None
+                    for i in range(1, 4)
+                )
 
             if is_valid:
                 valid_objectives.append(obj)
@@ -177,6 +182,15 @@ class HeadCTDataset(Dataset):
                 ),
                 "Yes" if row[condition] == 1 else "No",
             )
+        elif choice == "clinical_qa":
+            available_qa = []
+            for i in range(1, 4):  # q1/a1, q2/a2, q3/a3
+                q = row.get(f"q{i}")
+                a = row.get(f"a{i}")
+                if q is not None and a is not None:
+                    available_qa.append((q, a))
+            question, answer = random.choice(available_qa)
+            return question, answer
         else:
             raise ValueError(f"Unsupported objective choice: {choice}")
 

@@ -1,0 +1,47 @@
+{
+    "decoder": {
+        "decoder_model_name": "Qwen/Qwen3-1.7B"
+    },
+    "projector": {
+        "input_dim": 768,
+        "hidden_dim": 2048,
+        "output_dim": 2048
+    },
+    "encoder": {
+        "vision_encoder_in_chans": 3,
+        "vision_encoder_img_size": 96,
+        "vision_encoder_patch_size": 12
+    },
+    "encoder_output": {
+        "num_image_tokens": 513
+    },
+    "dataset": {
+        "filepath": "/gpfs/scratch/gs4342/data/cached_images",
+        "filenames": {
+            "test": "test/nyu_test_processed_cached.parquet",
+            "train": "train/nyu_train_processed_cached.parquet",
+            "val": "val/nyu_val_processed_cached.parquet"
+        }
+    },
+    "training": {
+        "gradient_accumulation_steps": 4,
+        "num_epochs": 2,
+        "max_epochs": 200,
+        "base_lr": 2e-5,
+        "encoder_lr": 1e-6,
+        "projector_lr": 1e-4,
+        "decoder_lr": 5e-5,
+        "weight_decay": 0.01,
+        "use_amp": true
+    },
+    "dataloader": {
+        "batch_size": 4,
+        "num_workers": 8,
+        "max_text_length": 512,
+        "roi": [-1000, 400],
+        "window_sizes": [[80, 80], [120, 120], [160, 160]],
+        "use_cached_images": true,
+        "seed": 7
+    },
+    "model_state_dict_path": "/gpfs/scratch/gs4342/llava_headct/checkpoints/14229977/best_model.pth"
+}

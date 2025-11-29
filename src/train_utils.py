@@ -1,8 +1,9 @@
 from torch import Tensor
+from src.config_handler import ModelConfig
 
 
-def determine_is_resume(config_name: str) -> bool:
-    return True if "pretrain" in config_name else False
+def determine_is_resume(config: ModelConfig) -> bool:
+    return True if config.model_state_dict_path else False
 
 
 def get_training_weight_config(
