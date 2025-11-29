@@ -76,9 +76,20 @@ class Projector(nn.Module):
         layers.append(nn.Linear(hidden_dim, output_dim))
 
         self.proj = nn.Sequential(*layers)
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight, gain=0.5)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
 
     def forward(self, x):
-        return self.proj(x)
+        x = self.proj(x)
+        x = torch.clamp(x, min=-10.0, max=10.0)
+        return x
 
 
 class Decoder(nn.Module):

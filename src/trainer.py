@@ -502,7 +502,8 @@ def main(job_id: int, config_name: str):
 
             if torch.isnan(loss) or torch.isinf(loss):
                 logger.warning(
-                    f"Rank {torch.distributed.get_rank()}, Batch {batch_idx}: Invalid loss, skipping backward"
+                    f"Rank {torch.distributed.get_rank() if torch.distributed.is_initialized() else 0}, "
+                    f"Batch {batch_idx}: Invalid loss, skipping backward"
                 )
                 logger.warning(f"Objective text: {batch['objective'][0]}")
                 optimizer.zero_grad()
@@ -514,29 +515,50 @@ def main(job_id: int, config_name: str):
                 loss.backward()
 
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                has_nan_grad = any(
-                    torch.isnan(p.grad).any()
-                    for p in model.parameters()
-                    if p.grad is not None
-                )
-                if has_nan_grad:
-                    logger.warning(f"NaN after unscaling at batch {batch_idx}")
-                    logger.warning(f"Accession numbers: {batch['accession_numbers']}")
-                    optimizer.zero_grad()
-                    scaler.update()
-                    continue
                 if use_amp:
                     scaler.unscale_(optimizer)
+
+                    has_nan_grad = any(
+                        torch.isnan(p.grad).any() or torch.isinf(p.grad).any()
+                        for p in model.parameters()
+                        if p.grad is not None
+                    )
+
+                    if has_nan_grad:
+                        logger.warning(f"NaN/Inf after unscaling at batch {batch_idx}")
+                        logger.warning(
+                            f"Accession numbers: {batch['accession_numbers']}"
+                        )
+                        optimizer.zero_grad()
+                        scaler.update()
+                        continue
+
                     torch.nn.utils.clip_grad_norm_(
                         model.parameters(), max_norm=gradient_clip
                     )
+
                     scaler.step(optimizer)
                     scaler.update()
                 else:
+                    has_nan_grad = any(
+                        torch.isnan(p.grad).any() or torch.isinf(p.grad).any()
+                        for p in model.parameters()
+                        if p.grad is not None
+                    )
+
+                    if has_nan_grad:
+                        logger.warning(f"NaN/Inf gradients at batch {batch_idx}")
+                        logger.warning(
+                            f"Accession numbers: {batch['accession_numbers']}"
+                        )
+                        optimizer.zero_grad()
+                        continue
+
                     torch.nn.utils.clip_grad_norm_(
                         model.parameters(), max_norm=gradient_clip
                     )
                     optimizer.step()
+
                 optimizer.zero_grad()
                 scheduler.step()
 
