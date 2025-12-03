@@ -39,41 +39,9 @@ OBJECTIVE_SCALES = {
     "clinical_qa": 1.0,
     "narrative_generation": 1.0,
     "condition_classification": 2.0,
-    "individual_condition_classification": 1.5,
+    "individual_condition_classification": 5.0,
     "impression_generation": 0.0,
 }
-
-# Phase 1
-# OBJECTIVE_DICT = {
-#     "narrative_generation": 0.025,
-#     "condition_classification": 0.7,
-#     "individual_condition_classification": 0.275,
-#     "impression_generation": 0.0,
-# }
-
-# OBJECTIVE_SCALES = {
-#     "condition_classification": 2.0,
-#     "individual_condition_classification": 1.5,
-#     "narrative_generation": 1.0,
-#     "impression_generation": 0.25,
-# }
-
-# # Phase 2
-# OBJECTIVE_SCALES = {
-#     "clinical_qa": 1.0,
-#     "narrative_generation": 1.0,
-#     "condition_classification": 2.0,
-#     "individual_condition_classification": 1.5,
-#     "impression_generation": 0.0,
-# }
-
-# OBJECTIVE_DICT = {
-#     "clinical_qa": 0.35,
-#     "narrative_generation": 0.1,
-#     "condition_classification": 0.3,
-#     "individual_condition_classification": 0.25,
-#     "impression_generation": 0.0,
-# }
 
 ABBREVIATED_CONDITIONS_DICT: dict = {
     "IPH": "intraparenchymal hemorrhage",
@@ -98,3 +66,18 @@ INDIVIDUAL_CONDITIONS_LIST: List[str] = [
     "fracture",
     "hematoma",
 ]
+
+CONDITION_FREQUENCIES: dict[str, int] = {
+    "cancer": 0.036,
+    "hydrocephalus": 0.064,
+    "edema": 0.104,
+    "dementia": 0.139,
+    "IPH": 0.069,
+    "IVH": 0.043,
+    "SDH": 0.081,
+    "EDH": 0.016,
+    "SAH": 0.067,
+    "ICH": 0.149,
+    "fracture": 0.016,
+    "hematoma": 0.000,
+}

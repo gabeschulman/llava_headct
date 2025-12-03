@@ -15,6 +15,7 @@ from src.constants import (
     OBJECTIVE_SCALES,
     INDIVIDUAL_CONDITIONS_LIST,
     ABBREVIATED_CONDITIONS_DICT,
+    CONDITION_FREQUENCIES,
 )
 
 
@@ -160,27 +161,43 @@ class HeadCTDataset(Dataset):
             return (
                 PROMPT_TEMPLATES["condition_classification"],
                 row["conditions"],
+                row["sample_weight"],
             )
         elif choice == "impression_generation":
             return (
                 PROMPT_TEMPLATES["impression_generation"],
                 row["impression_deid_clean"],
+                row["sample_weight"],
             )
         elif choice == "narrative_generation":
-            return PROMPT_TEMPLATES["narrative_generation"], row["findings"]
+            return (
+                PROMPT_TEMPLATES["narrative_generation"],
+                row["findings"],
+                row["sample_weight"],
+            )
         elif choice == "individual_condition_classification":
             conditions_present = [
                 c for c in INDIVIDUAL_CONDITIONS_LIST if row.get(c) == 1
             ]
-            if conditions_present and np.random.random() < 0.5:
+            if conditions_present and np.random.random() < 0.75:
                 condition = np.random.choice(conditions_present)
             else:
                 condition = np.random.choice(INDIVIDUAL_CONDITIONS_LIST)
+
+            prompt = PROMPT_TEMPLATES["individual_condition_classification"].format(
+                condition=ABBREVIATED_CONDITIONS_DICT.get(condition, condition)
+            )
+            answer = "Yes" if row[condition] == 1 else "No"
+            if answer == "Yes":
+                weight = 1.0 / CONDITION_FREQUENCIES.get(condition, 0.01)
+                weight = min(weight, 10.0)
+            else:
+                weight = 1.0
+
             return (
-                PROMPT_TEMPLATES["individual_condition_classification"].format(
-                    condition=ABBREVIATED_CONDITIONS_DICT.get(condition, condition)
-                ),
-                "Yes" if row[condition] == 1 else "No",
+                prompt,
+                answer,
+                weight,
             )
         elif choice == "clinical_qa":
             available_qa = []
@@ -190,7 +207,7 @@ class HeadCTDataset(Dataset):
                 if q is not None and a is not None:
                     available_qa.append((q, a))
             question, answer = random.choice(available_qa)
-            return question, answer
+            return question, answer, row["sample_weight"]
         else:
             raise ValueError(f"Unsupported objective choice: {choice}")
 
@@ -258,7 +275,7 @@ class HeadCTDataset(Dataset):
         sample_data = self._data_rows[idx].copy()
 
         objective_type = self._choose_valid_objective(row=sample_data)
-        prompt_text, objective_text = self.map_choice_to_objective(
+        prompt_text, objective_text, weight = self.map_choice_to_objective(
             sample_data, objective_type
         )
 
@@ -292,7 +309,7 @@ class HeadCTDataset(Dataset):
             else "",
             "has_abnormality": sample_data["has_abnormality"],
             "objective_scale": OBJECTIVE_SCALES[objective_type],
-            "sample_weight": sample_data["sample_weight"],
+            "sample_weight": weight,
         }
 
         return result

@@ -29,7 +29,7 @@
     },
     "training": {
         "gradient_accumulation_steps": 4,
-        "num_epochs": 6,
+        "num_epochs": 4,
         "max_epochs": 200,
         "encoder_lr": 5e-7,
         "projector_lr": 1e-5,
