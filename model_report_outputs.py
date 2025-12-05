@@ -6,7 +6,7 @@ from tqdm import tqdm
 import json
 import os
 
-MAX_BATCHES_FOR_TEST = float('inf') # Set to float('inf') to ignore
+MAX_BATCHES_FOR_TEST = float("inf")  # Set to float('inf') to ignore
 OUTPUT_DIR = "./generation_results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -45,30 +45,37 @@ generated_results = []
 print(f"Rank {rank}: Starting Inference...")
 
 with torch.no_grad():
-    for batch_count, batch in enumerate(tqdm(test_dataloader, desc=f"Rank {rank} Eval"), 1):
+    for batch_count, batch in enumerate(
+        tqdm(test_dataloader, desc=f"Rank {rank} Eval"), 1
+    ):
         if batch_count > MAX_BATCHES_FOR_TEST:
-            print(f"\n*** Rank {rank}: Stopping after {MAX_BATCHES_FOR_TEST} batches for testing purposes. ***")
+            print(
+                f"\n*** Rank {rank}: Stopping after {MAX_BATCHES_FOR_TEST} batches for testing purposes. ***"
+            )
             break
 
         if batch is None:
             continue
 
         images_batch = batch["image"].to(device, non_blocking=True)
-        
+
         acc_nums_list = [str(acc_num) for acc_num in batch["accession_numbers"]]
-        
+
         current_batch_size = len(acc_nums_list)
 
         batched_prompts = [NARRATIVE_PROMPT] * current_batch_size
 
-        generated_ids = model.generate(images_batch, prompt=batched_prompts, max_new_tokens=512)
-        generated_texts = model.decoder.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        generated_ids = model.generate(
+            images_batch, prompt=batched_prompts, max_new_tokens=512
+        )
+        generated_texts = model.decoder.tokenizer.batch_decode(
+            generated_ids, skip_special_tokens=True
+        )
 
         for acc_num, response in zip(acc_nums_list, generated_texts):
-            generated_results.append({
-                "accession_num": acc_num,
-                "generated_report": response.strip()
-            })
+            generated_results.append(
+                {"accession_num": acc_num, "generated_report": response.strip()}
+            )
 
 output_file = os.path.join(OUTPUT_DIR, f"narratives_rank_{rank}.json")
 print(f"Rank {rank}: Saving {len(generated_results)} reports to {output_file}")

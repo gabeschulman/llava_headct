@@ -6,7 +6,9 @@ import pandas as pd
 from tqdm import tqdm
 
 
-MAX_BATCHES_FOR_TEST = float('inf')  # Set to a small integer for testing, float('inf') for full eval
+MAX_BATCHES_FOR_TEST = float(
+    "inf"
+)  # Set to a small integer for testing, float('inf') for full eval
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -93,13 +95,17 @@ for cond in binary_columns:
 condition_prompts = []
 for curr_cond in binary_columns:
     name = identifier_names[curr_cond]
-    condition_prompts.append(f"For the following individual condition, indicate whether it is present ('Yes') or absent ('No'): {name}. Respond with only: Yes or No\n\nANSWER:")
+    condition_prompts.append(
+        f"For the following individual condition, indicate whether it is present ('Yes') or absent ('No'): {name}. Respond with only: Yes or No\n\nANSWER:"
+    )
 
 
 with torch.no_grad():
     for batch_count, batch in enumerate(tqdm(test_dataloader, desc="Evaluation"), 1):
         if batch_count > MAX_BATCHES_FOR_TEST:
-            print(f"\n*** Stopping after {MAX_BATCHES_FOR_TEST} batches for testing purposes. ***")
+            print(
+                f"\n*** Stopping after {MAX_BATCHES_FOR_TEST} batches for testing purposes. ***"
+            )
             break
 
         if batch is None:
@@ -123,7 +129,9 @@ with torch.no_grad():
         batch_rows = batch_df.T.to_dict("series")
 
         valid_indices = []
-        acc_num_to_original_index = {acc_num: i for i, acc_num in enumerate(acc_nums_list)}
+        acc_num_to_original_index = {
+            acc_num: i for i, acc_num in enumerate(acc_nums_list)
+        }
 
         for acc_num in valid_acc_nums:
             valid_indices.append(acc_num_to_original_index[acc_num])
@@ -134,11 +142,17 @@ with torch.no_grad():
         B_valid = len(valid_indices)
 
         valid_images_batch = full_images_batch[valid_indices]
-        final_image_batch = torch.repeat_interleave(valid_images_batch, repeats=C, dim=0)
+        final_image_batch = torch.repeat_interleave(
+            valid_images_batch, repeats=C, dim=0
+        )
         batched_prompts = condition_prompts * B_valid
 
-        generated_ids = model.generate(final_image_batch, prompt=batched_prompts, max_new_tokens=256)
-        generated_texts = model.decoder.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        generated_ids = model.generate(
+            final_image_batch, prompt=batched_prompts, max_new_tokens=256
+        )
+        generated_texts = model.decoder.tokenizer.batch_decode(
+            generated_ids, skip_special_tokens=True
+        )
 
         for idx, response in enumerate(generated_texts):
             image_idx = idx // C
@@ -198,8 +212,12 @@ for condition in metrics.keys():
         recall = tp / (tp + fn) if (tp + fn) > 0 else -1
         accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
 
-        print(f"    Precision: {round(precision,4)}") if precision != -1 else print("    Precision: Not enough relevant data")
-        print(f"    Recall: {round(recall,4)}") if recall != -1 else print("    Recall: Not enough relevant data")
+        print(f"    Precision: {round(precision,4)}") if precision != -1 else print(
+            "    Precision: Not enough relevant data"
+        )
+        print(f"    Recall: {round(recall,4)}") if recall != -1 else print(
+            "    Recall: Not enough relevant data"
+        )
         print(f"    Accuracy: {round(accuracy,4)}\n")
 
         print("Expected w.r.t. ratio:")
@@ -213,12 +231,20 @@ yes_ratio = yes_count / (yes_count + no_count)
 
 total_precision = tp_sum / (tp_sum + fp_sum) if (tp_sum + fp_sum) > 0 else -1
 total_recall = tp_sum / (tp_sum + fn_sum) if (tp_sum + fn_sum) > 0 else -1
-total_accuracy = (tp_sum + tn_sum) / (tp_sum + tn_sum + fp_sum + fn_sum) if (tp_sum + tn_sum + fp_sum + fn_sum) > 0 else 0.0
+total_accuracy = (
+    (tp_sum + tn_sum) / (tp_sum + tn_sum + fp_sum + fn_sum)
+    if (tp_sum + tn_sum + fp_sum + fn_sum) > 0
+    else 0.0
+)
 
 print("\n Complete Metrics:")
 print(f"    Yes to No Ratio: {yes_count}:{no_count}")
-print(f"    Total Precision: {round(total_precision,4)}") if total_precision != -1 else print("    Total Precision: Not enough relevant data")
-print(f"    Total Recall: {round(total_recall,4)}") if total_recall != -1 else print("    Total Recall: Not enough relevant data")
+print(
+    f"    Total Precision: {round(total_precision,4)}"
+) if total_precision != -1 else print("    Total Precision: Not enough relevant data")
+print(f"    Total Recall: {round(total_recall,4)}") if total_recall != -1 else print(
+    "    Total Recall: Not enough relevant data"
+)
 print(f"    Total Accuracy: {round(total_accuracy,4)}")
 
 print("\nExpected w.r.t. ratio:")
@@ -230,4 +256,3 @@ print("\nExpected with 50/50 guessing:")
 print(f"Precision: {round(yes_ratio, 4)}")
 print("Recall: 0.5")
 print("Accuracy: 0.5")
-
