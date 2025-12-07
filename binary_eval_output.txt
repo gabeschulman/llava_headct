@@ -1,0 +1,142 @@
+Loaded checkpoint from epoch 2
+  Train loss: 1.3200
+  Val loss: 1.4158
+
+ Per Condition:
+No Match: 1064
+Cancer:
+    Precision: 0.0353
+    Recall: 0.0507
+    Accuracy: 0.9296
+
+Expected w.r.t. ratio:
+Precision: 0.0301
+Recall: 0.0301
+Accuracy: 0.9416
+
+Hydrocephalus:
+    Precision: 0.053
+    Recall: 0.1149
+    Accuracy: 0.8145
+
+Expected w.r.t. ratio:
+Precision: 0.0629
+Recall: 0.0629
+Accuracy: 0.8821
+
+Edema:
+    Precision: 0.095
+    Recall: 0.0722
+    Accuracy: 0.8437
+
+Expected w.r.t. ratio:
+Precision: 0.0965
+Recall: 0.0965
+Accuracy: 0.8256
+
+Dementia:
+    Precision: 0.1196
+    Recall: 0.4032
+    Accuracy: 0.4965
+
+Expected w.r.t. ratio:
+Precision: 0.1415
+Recall: 0.1415
+Accuracy: 0.757
+
+Iph:
+    Precision: 0.3333
+    Recall: 0.0011
+    Accuracy: 0.9293
+
+Expected w.r.t. ratio:
+Precision: 0.0706
+Recall: 0.0706
+Accuracy: 0.8688
+
+Ivh:
+    Precision: Not enough relevant data
+    Recall: 0.0
+    Accuracy: 0.9504
+
+Expected w.r.t. ratio:
+Precision: 0.0495
+Recall: 0.0495
+Accuracy: 0.9058
+
+Sdh:
+    Precision: 0.0634
+    Recall: 0.0289
+    Accuracy: 0.9009
+
+Expected w.r.t. ratio:
+Precision: 0.0708
+Recall: 0.0708
+Accuracy: 0.8684
+
+Edh:
+    Precision: Not enough relevant data
+    Recall: 0.0
+    Accuracy: 0.9776
+
+Expected w.r.t. ratio:
+Precision: 0.0223
+Recall: 0.0223
+Accuracy: 0.9564
+
+Sah:
+    Precision: 0.0833
+    Recall: 0.001
+    Accuracy: 0.9234
+
+Expected w.r.t. ratio:
+Precision: 0.0758
+Recall: 0.0758
+Accuracy: 0.8598
+
+Ich:
+    Precision: 0.1355
+    Recall: 0.2033
+    Accuracy: 0.6902
+
+Expected w.r.t. ratio:
+Precision: 0.1479
+Recall: 0.1479
+Accuracy: 0.748
+
+Fracture:
+    Precision: Not enough relevant data
+    Recall: 0.0
+    Accuracy: 0.9839
+
+Expected w.r.t. ratio:
+Precision: 0.016
+Recall: 0.016
+Accuracy: 0.9685
+
+Hematoma:
+    Precision: Not enough relevant data
+    Recall: Not enough relevant data
+    Accuracy: 1.0
+
+Expected w.r.t. ratio:
+Precision: 0.0
+Recall: 0.0
+Accuracy: 1.0
+
+
+ Complete Metrics:
+    Yes to No Ratio: 21098:301822
+    Total Precision: 0.1066
+    Total Recall: 0.1337
+    Total Accuracy: 0.8701
+
+Expected w.r.t. ratio:
+Precision: 0.0653
+Recall: 0.0653
+Accuracy: 0.8779
+
+Expected with 50/50 guessing:
+Precision: 0.0653
+Recall: 0.5
+Accuracy: 0.5
