@@ -7,12 +7,12 @@ import json
 import os
 
 MAX_BATCHES_FOR_TEST = float("inf")  # Set to float('inf') to ignore
-OUTPUT_DIR = "./generation_results"
+OUTPUT_DIR = "/gpfs/scratch/rpg8343/data/gen_out"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-config_name = "narrative_train_config"
+config_name = "pretrain_config"
 checkpoint_path = (
     "/gpfs/scratch/gs4342/llava_headct/checkpoints/14558456/best_model.pth"
 )
@@ -20,10 +20,14 @@ checkpoint_path = (
 rank = dist.get_rank() if dist.is_initialized() else 0
 world_size = dist.get_world_size() if dist.is_initialized() else 1
 
+
 model_config = ModelConfig(config_name)
 model_config.dataloader_config["batch_size"] = 16
 model_config.dataloader_config["num_workers"] = 8
 model_config.dataloader_config["persistent_workers"] = True
+
+
+del model_config.encoder_config["vision_encoder_weights"]
 
 model = LLaVAHeadCT(
     **model_config.encoder_config,
@@ -68,6 +72,7 @@ with torch.no_grad():
         generated_ids = model.generate(
             images_batch, prompt=batched_prompts, max_new_tokens=512
         )
+
         generated_texts = model.decoder.tokenizer.batch_decode(
             generated_ids, skip_special_tokens=True
         )
