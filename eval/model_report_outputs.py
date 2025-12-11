@@ -46,8 +46,6 @@ NARRATIVE_PROMPT = "Generate a detailed radiologist's medical narrative based on
 
 generated_results = []
 
-print(f"Rank {rank}: Starting Inference...")
-
 with torch.no_grad():
     for batch_count, batch in enumerate(
         tqdm(test_dataloader, desc=f"Rank {rank} Eval"), 1
@@ -83,9 +81,9 @@ with torch.no_grad():
             )
 
 output_file = os.path.join(OUTPUT_DIR, f"narratives_rank_{rank}.json")
-print(f"Rank {rank}: Saving {len(generated_results)} reports to {output_file}")
+print(f"Saving {len(generated_results)} reports to {output_file}")
 
 with open(output_file, "w") as f:
     json.dump(generated_results, f, indent=4)
 
-print(f"Rank {rank}: Finished.")
+print(f"Done")

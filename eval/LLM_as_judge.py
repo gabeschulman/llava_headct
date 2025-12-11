@@ -30,8 +30,6 @@ IDENTIFIERS = [
 
 MODEL_ID = "Qwen/Qwen1.5-7B-Chat"
 
-print("--- Loading Data ---")
-
 try:
     df_gt = pd.read_parquet(GT_PATH)
     df_gt["gt_report"] = (
@@ -69,7 +67,6 @@ merged_df = merged_df.sort_values(by="accession_num").reset_index(drop=True)
 
 print(f"Processing {len(merged_df)} matched records.")
 
-print("--- Initializing Model ---")
 try:
     pipe = pipeline(
         "text-generation",
@@ -83,9 +80,6 @@ except Exception as e:
 
 
 def create_prompt(report_text, identifiers):
-    """
-    Constructs the prompt to force Qwen to output a binary vector.
-    """
     id_list_str = ", ".join(identifiers)
 
     system_prompt = (
@@ -111,9 +105,6 @@ def create_prompt(report_text, identifiers):
 
 
 def parse_output(output_text):
-    """
-    Extracts the list of integers from the model response.
-    """
     try:
         match = re.search(r"\[([01,\s]+)\]", output_text)
         if match:
@@ -137,7 +128,7 @@ def parse_output(output_text):
 
 results = {}
 
-print("--- Starting Inference ---")
+print("Starting Inference")
 
 num_iterations = 0
 for index, row in tqdm(merged_df.iterrows(), total=len(merged_df)):
@@ -165,10 +156,10 @@ for index, row in tqdm(merged_df.iterrows(), total=len(merged_df)):
         "gen_raw": gen_response_text if not gen_vector else None,
     }
     if num_iterations > ITERATIONS_MAX:
-        print("\n--- Hit max iterations ---")
+        print("\nHit max iterations")
         break
 
-print("\n--- Inference Complete. Formatting Output ---")
+print("\nInference Complete.")
 
 final_output = []
 sorted_keys = sorted(results.keys())

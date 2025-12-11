@@ -21,7 +21,7 @@ IDENTIFIERS = [
     "hematoma",
 ]
 
-print(f"--- Loading data from {INPUT_FILE} ---")
+print(f"Loading data from {INPUT_FILE}")
 
 try:
     with open(INPUT_FILE, "r") as f:
@@ -40,7 +40,6 @@ for entry in data:
     gt = entry.get("gt_vector")
     gen = entry.get("gen_vector")
 
-    # Filter out any failed parses from the previous step
     if gt == "PARSE_ERROR" or gen == "PARSE_ERROR" or gt is None or gen is None:
         parse_errors += 1
         continue
@@ -55,8 +54,6 @@ print(f"Parse Errors Skipped: {parse_errors}")
 
 Y_true = np.array(y_true)
 Y_pred = np.array(y_pred)
-
-print("\n--- Calculating Breakdown by Identifier ---")
 
 results_list = []
 
