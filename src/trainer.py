@@ -78,57 +78,6 @@ def compute_teacher_forcing_loss(
         return loss_per_token.mean()
 
 
-# def compute_teacher_forcing_loss(
-#     outputs,
-#     target_ids,
-#     num_image_tokens=513,
-#     prompt_length=0,
-#     pad_token_id=-100,
-#     reduction="mean",
-#     label_smoothing=0.0,
-# ):
-#     logits_for_targets = outputs.logits[
-#         :, num_image_tokens + prompt_length - 1 :
-#     ].contiguous()
-#     labels = target_ids.contiguous()
-
-#     valid_mask = (labels != pad_token_id)
-
-#     labels_for_loss = torch.where(
-#         valid_mask,
-#         labels,
-#         torch.zeros_like(labels)
-#     )
-
-#     vocab_size = logits_for_targets.size(-1)
-#     batch_size = logits_for_targets.size(0)
-#     seq_len = logits_for_targets.size(1)
-
-#     if label_smoothing > 0:
-#         log_probs = torch.nn.functional.log_softmax(logits_for_targets, dim=-1)
-#         with torch.no_grad():
-#             true_dist = torch.zeros_like(log_probs)
-#             true_dist.fill_(label_smoothing / (vocab_size - 1))
-#             true_dist.scatter_(2, labels_for_loss.unsqueeze(2), 1.0 - label_smoothing)
-
-#         loss_per_token = -(true_dist * log_probs).sum(dim=-1)
-#     else:
-#         criterion = nn.CrossEntropyLoss(reduction="none")
-#         loss_per_token = criterion(
-#             logits_for_targets.view(-1, vocab_size),
-#             labels_for_loss.view(-1)
-#         ).view(batch_size, seq_len)
-
-#     loss_per_token = loss_per_token * valid_mask.float()
-
-#     if reduction == "none":
-#         valid_counts = valid_mask.sum(dim=1).clamp(min=1)
-#         loss_per_sample = loss_per_token.sum(dim=1) / valid_counts
-#         return loss_per_sample
-#     else:
-#         return loss_per_token.sum() / valid_mask.sum().clamp(min=1)
-
-
 def compute_contrastive_loss(
     image_embeddings: torch.Tensor,
     text_embeddings: list[torch.Tensor],
