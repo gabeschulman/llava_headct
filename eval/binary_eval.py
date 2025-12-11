@@ -8,11 +8,10 @@ from tqdm import tqdm
 
 MAX_BATCHES_FOR_TEST = float(
     "inf"
-)  # Set to a small integer for testing, float('inf') for full eval
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Model Config
 config_name = "narrative_train_config"
 objective = "narrative_generation"
 checkpoint_path = (

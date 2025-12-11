@@ -6,7 +6,7 @@ from tqdm import tqdm
 import json
 import os
 
-MAX_BATCHES_FOR_TEST = float("inf")  # Set to float('inf') to ignore
+MAX_BATCHES_FOR_TEST = float("inf")
 OUTPUT_DIR = "/gpfs/scratch/rpg8343/data/gen_out"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
